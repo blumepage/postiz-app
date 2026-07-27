@@ -22,5 +22,12 @@ sent to the published dataset or saved under Sanity's `drafts.` namespace.
 Credentials are encrypted in the same Postiz integration record used by the
 WordPress channel; no Sanity token is exposed to the frontend.
 
+The calendar month view is also Blume-owned. It presents a continuous
+13-month timeline centered on the selected month, lazy-mounts month grids as
+they approach the viewport, uses larger day cells, and shows media-rich post
+cards with expandable copy. The channels rail defaults to its collapsed state.
+Keep these changes localized to the launches calendar components when
+resolving upstream updates.
+
 Postiz itself is AGPL-3.0. Keep this fork public and retain upstream license and
 copyright notices when distributing or running modified builds.

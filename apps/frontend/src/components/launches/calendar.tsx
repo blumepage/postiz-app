@@ -7,6 +7,7 @@ import React, {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from 'react';
 import {
@@ -41,11 +42,10 @@ import { useToaster } from '@gitroom/react/toaster/toaster';
 import { useUser } from '@gitroom/frontend/components/layout/user.context';
 import isSameOrAfter from 'dayjs/plugin/isSameOrAfter';
 import isSameOrBefore from 'dayjs/plugin/isSameOrBefore';
-import { groupBy, random, sortBy } from 'lodash';
+import { groupBy, sortBy } from 'lodash';
 import SafeImage from '@gitroom/react/helpers/safe.image';
 import { extend } from 'dayjs';
 import { isUSCitizen } from './helpers/isuscitizen.utils';
-import { useInterval } from '@mantine/hooks';
 import { StatisticsModal } from '@gitroom/frontend/components/launches/statistics';
 import { MissingReleaseModal } from '@gitroom/frontend/components/launches/missing-release.modal';
 import { useT } from '@gitroom/react/translation/get.transation.service.client';
@@ -58,6 +58,8 @@ import copy from 'copy-to-clipboard';
 import { stripHtmlValidation } from '@gitroom/helpers/utils/strip.html.validation';
 import { newDayjs } from '@gitroom/frontend/components/layout/set.timezone';
 import { Button } from '@gitroom/react/form/button';
+import { useMediaDirectory } from '@gitroom/react/helpers/use.media.directory';
+import { VideoOrImage } from '@gitroom/react/helpers/video.or.image';
 
 // Extend dayjs with necessary plugins
 extend(isSameOrAfter);
@@ -408,9 +410,84 @@ export const WeekView = () => {
     </div>
   );
 };
+
+const ContinuousMonthSection: FC<{
+  month: {
+    key: string;
+    label: string;
+    isAnchor: boolean;
+    cells: Array<dayjs.Dayjs | null>;
+  };
+  anchorRef: React.RefObject<HTMLDivElement | null>;
+}> = ({ month, anchorRef }) => {
+  const sectionRef = useRef<HTMLDivElement>(null);
+  const [isVisible, setIsVisible] = useState(month.isAnchor);
+  const estimatedHeight = (month.cells.length / 7) * 264 + 46;
+
+  useEffect(() => {
+    const section = sectionRef.current;
+    if (!section) {
+      return;
+    }
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          setIsVisible(true);
+          observer.disconnect();
+        }
+      },
+      { rootMargin: '800px 0px' }
+    );
+    observer.observe(section);
+    return () => observer.disconnect();
+  }, []);
+
+  const setRefs = useCallback(
+    (node: HTMLDivElement | null) => {
+      sectionRef.current = node;
+      if (month.isAnchor) {
+        anchorRef.current = node;
+      }
+    },
+    [anchorRef, month.isAnchor]
+  );
+
+  return (
+    <section
+      ref={setRefs}
+      data-month={month.key}
+      className="scroll-mt-[104px]"
+      style={{ minHeight: estimatedHeight }}
+    >
+      <div className="sticky top-[62px] z-[30] flex h-[42px] items-center border-b border-newTableBorder bg-newBgColorInner/95 px-[12px] text-[15px] font-[600] backdrop-blur">
+        {month.label}
+      </div>
+      {isVisible && (
+        <div className="grid grid-cols-7 gap-[4px] pt-[4px]">
+          {month.cells.map((date, index) =>
+            date ? (
+              <CalendarColumn
+                key={date.format('YYYY-MM-DD')}
+                getDate={date.endOf('day')}
+                randomHour={true}
+              />
+            ) : (
+              <div
+                key={`${month.key}-empty-${index}`}
+                className="min-h-[260px] rounded-[8px] border border-newTextColor/5 bg-newBgColorInner/30"
+              />
+            )
+          )}
+        </div>
+      )}
+    </section>
+  );
+};
+
 export const MonthView = () => {
   const { startDate } = useCalendar();
-  const t = useT();
+  const scrollContainer = useRef<HTMLDivElement>(null);
+  const anchorMonth = useRef<HTMLDivElement>(null);
 
   // Use dayjs to get localized day names
   const localizedDays = useMemo(() => {
@@ -425,60 +502,60 @@ export const MonthView = () => {
     return days;
   }, [i18next.resolvedLanguage]);
 
-  const calendarDays = useMemo(() => {
-    const monthStart = newDayjs(startDate);
-    const currentMonth = monthStart.month();
-    const currentYear = monthStart.year();
-
-    const startOfMonth = newDayjs(new Date(currentYear, currentMonth, 1));
-
-    // Calculate the day offset for Monday (isoWeekday() returns 1 for Monday)
-    const startDayOfWeek = startOfMonth.isoWeekday(); // 1 for Monday, 7 for Sunday
-    const daysBeforeMonth = startDayOfWeek - 1; // Days to show from the previous month
-
-    // Get the start date (Monday of the first week that includes this month)
-    const calendarStartDate = startOfMonth.subtract(daysBeforeMonth, 'day');
-
-    // Create an array to hold the calendar days (6 weeks * 7 days = 42 days max)
-    const calendarDays = [];
-    let currentDay = calendarStartDate;
-    for (let i = 0; i < 42; i++) {
-      let label = 'current-month';
-      if (currentDay.month() < currentMonth) label = 'previous-month';
-      if (currentDay.month() > currentMonth) label = 'next-month';
-      calendarDays.push({
-        day: currentDay,
-        label,
-      });
-
-      // Move to the next day
-      currentDay = currentDay.add(1, 'day');
-    }
-    return calendarDays;
+  const months = useMemo(() => {
+    const selectedMonth = newDayjs(startDate).startOf('month');
+    return Array.from({ length: 13 }, (_, monthIndex) => {
+      const month = selectedMonth.add(monthIndex - 6, 'month');
+      const leadingDays = month.isoWeekday() - 1;
+      const cells: Array<dayjs.Dayjs | null> = [
+        ...Array.from({ length: leadingDays }, () => null),
+        ...Array.from({ length: month.daysInMonth() }, (_, dayIndex) =>
+          month.date(dayIndex + 1)
+        ),
+      ];
+      const trailingDays = (7 - (cells.length % 7)) % 7;
+      cells.push(...Array.from({ length: trailingDays }, () => null));
+      return {
+        key: month.format('YYYY-MM'),
+        label: month.format('MMMM YYYY'),
+        isAnchor: month.isSame(selectedMonth, 'month'),
+        cells,
+      };
+    });
   }, [startDate]);
 
+  useEffect(() => {
+    const container = scrollContainer.current;
+    const anchor = anchorMonth.current;
+    if (!container || !anchor) {
+      return;
+    }
+    container.scrollTop = Math.max(0, anchor.offsetTop - 104);
+  }, [startDate, months]);
+
   return (
-    <div className="flex flex-col text-textColor flex-1">
-      <div className="flex-1 flex relative">
-        <div className="grid grid-cols-7 grid-rows-[62px_auto] gap-[4px] rounded-[10px] absolute start-0 top-0 overflow-auto w-full h-full scrollbar scrollbar-thumb-tableBorder scrollbar-track-secondary">
+    <div className="flex flex-col text-textColor flex-1 relative min-w-0">
+      <div
+        ref={scrollContainer}
+        className="absolute inset-0 overflow-auto rounded-[10px] scrollbar scrollbar-thumb-tableBorder scrollbar-track-secondary"
+      >
+        <div className="sticky top-0 z-[40] grid min-w-[1330px] grid-cols-7 gap-[4px] bg-newBgColorInner pb-[4px]">
           {localizedDays.map((day) => (
             <div
               key={day}
-              className="z-[20] p-2 bg-newTableHeader flex justify-center items-center flex-col h-[62px] rounded-[8px] sticky top-0"
+              className="p-2 bg-newTableHeader flex justify-center items-center flex-col h-[58px] rounded-[8px] text-[13px] font-[600]"
             >
               <div>{day}</div>
             </div>
           ))}
-          {calendarDays.map((date, index) => (
-            <div
-              key={index}
-              className="text-center items-center justify-center flex"
-            >
-              <CalendarColumn
-                getDate={newDayjs(date.day).endOf('day')}
-                randomHour={true}
-              />
-            </div>
+        </div>
+        <div className="flex min-w-[1330px] flex-col gap-[28px] pb-[32px]">
+          {months.map((month) => (
+            <ContinuousMonthSection
+              key={month.key}
+              month={month}
+              anchorRef={anchorMonth}
+            />
           ))}
         </div>
       </div>
@@ -588,11 +665,11 @@ export const CalendarColumn: FC<{
   const t = useT();
 
   const { getDate, randomHour } = props;
-  const [num, setNum] = useState(0);
   const user = useUser();
   const {
     integrations,
     posts,
+    now,
     changeDate,
     display,
     reloadCalendarView,
@@ -637,25 +714,8 @@ export const CalendarColumn: FC<{
     const originalUtc = getDate.startOf('hour');
     return originalUtc
       .startOf('hour')
-      .isBefore(newDayjs().startOf('hour').utc());
-  }, [getDate, num]);
-
-  const { start, stop } = useInterval(
-    useCallback(() => {
-      if (isBeforeNow) {
-        return;
-      }
-      setNum(num + 1);
-    }, [isBeforeNow]),
-    random(120000, 150000)
-  );
-
-  useEffect(() => {
-    start();
-    return () => {
-      stop();
-    };
-  }, []);
+      .isBefore(now.startOf('hour').utc());
+  }, [getDate, now]);
   const [{ canDrop }, drop] = useDrop(() => ({
     accept: 'post',
     drop: async (item: any) => {
@@ -824,6 +884,8 @@ export const CalendarColumn: FC<{
     <div
       className={clsx(
         'flex flex-col w-full min-h-full relative',
+        display === 'month' &&
+          'min-h-[260px] rounded-[8px] bg-newBgColorInner/60',
         isBeforeNow && 'repeated-strip',
         loading && 'animate-pulse',
         isBeforeNow
@@ -833,7 +895,17 @@ export const CalendarColumn: FC<{
       ref={drop as any}
     >
       {display === 'month' && (
-        <div className={clsx('pt-[6px] text-[14px]')}>{getDate.date()}</div>
+        <div
+          className={clsx(
+            'flex min-h-[34px] items-center justify-between px-[9px] pt-[5px] text-[12px] font-[600]',
+            getDate.isSame(newDayjs(), 'day') && 'text-newTableTextFocused'
+          )}
+        >
+          <span>{getDate.date()}</span>
+          {getDate.isSame(newDayjs(), 'day') && (
+            <span className="h-[6px] w-[6px] rounded-full bg-newTableTextFocused" />
+          )}
+        </div>
       )}
       <div
         className={clsx(
@@ -857,7 +929,7 @@ export const CalendarColumn: FC<{
             <div
               key={post.id}
               className={clsx(
-                'text-textColor p-[2.5px] relative flex flex-col justify-center items-center'
+                'text-textColor p-[3px] relative flex flex-col justify-center items-center'
               )}
             >
               <div className="relative w-full flex flex-col items-center p-[2.5px]">
@@ -880,7 +952,7 @@ export const CalendarColumn: FC<{
           ))}
           {!showAll && postList.length > 3 && (
             <div
-              className="text-center hover:underline py-[5px] text-textColor"
+              className="text-center hover:underline py-[6px] text-[11px] text-textColor"
               onClick={showAllFunc}
             >
               {t('show_more', '+ Show more')} ({postList.length - 3})
@@ -888,7 +960,7 @@ export const CalendarColumn: FC<{
           )}
           {showAll && postList.length > 3 && (
             <div
-              className="text-center hover:underline py-[5px]"
+              className="text-center hover:underline py-[6px] text-[11px]"
               onClick={showLessFunc}
             >
               {t('show_less', '- Show less')}
@@ -1007,6 +1079,8 @@ const CalendarItem: FC<{
     missingRelease,
   } = props;
   const { disableXAnalytics } = useVariables();
+  const mediaDirectory = useMediaDirectory();
+  const [contentExpanded, setContentExpanded] = useState(false);
   const user = useUser();
   const showCreationMethodBadge =
     user?.impersonate &&
@@ -1015,6 +1089,23 @@ const CalendarItem: FC<{
   const preview = useCallback(() => {
     window.open(`/p/` + post.id + '?share=true', '_blank');
   }, [post]);
+  const content = useMemo(
+    () =>
+      stripHtmlValidation('none', post.content, false, true, false) ||
+      t('no_content', 'no content'),
+    [post.content, t]
+  );
+  const firstMedia = useMemo(() => {
+    try {
+      const media = Array.isArray(post.image)
+        ? post.image
+        : JSON.parse(post.image || '[]');
+      return media?.[0]?.path ? media[0] : undefined;
+    } catch {
+      return undefined;
+    }
+  }, [post.image]);
+  const canExpandContent = display === 'month' && content.length > 110;
   const [{ opacity }, dragRef] = useDrag(
     () => ({
       type: 'post',
@@ -1142,7 +1233,10 @@ const CalendarItem: FC<{
       <div
         onClick={editPost}
         className={clsx(
-          'gap-[5px] w-full flex h-full flex-1 rounded-br-[10px] rounded-bl-[10px] p-[8px] text-[14px] bg-newColColor',
+          'gap-[6px] w-full flex h-full flex-1 rounded-br-[10px] rounded-bl-[10px] bg-newColColor',
+          display === 'month'
+            ? 'min-h-[118px] p-[7px] text-[11px]'
+            : 'p-[8px] text-[14px]',
           'relative',
           isBeforeNow && '!grayscale'
         )}
@@ -1157,16 +1251,55 @@ const CalendarItem: FC<{
             src={`/icons/platforms/${post.integration?.providerIdentifier}.png`}
           />
         </div>
-        <div className="w-full flex-1 flex flex-col min-h-[40px]">
-          <div className="text-start">
-            {state === 'DRAFT' ? t('draft', 'Draft') + ': ' : ''}
+        <div className="w-full min-w-0 flex-1 flex flex-col gap-[5px]">
+          <div className="flex items-center justify-between gap-[6px] text-start text-[10px] text-textColor/55">
+            <span>
+              {state === 'DRAFT'
+                ? t('draft', 'Draft')
+                : newDayjs(post.publishDate)
+                    .local()
+                    .format(isUSCitizen() ? 'hh:mm A' : 'HH:mm')}
+            </span>
           </div>
-            <div className="w-full relative">
-              <div className="absolute top-0 start-0 w-full text-ellipsis break-words line-clamp-1 text-start">
-                {stripHtmlValidation('none', post.content, false, true, false) ||
-                  t('no_content', 'no content')}
-              </div>
+          {display === 'month' && firstMedia?.path && (
+            <div className="h-[82px] w-full overflow-hidden rounded-[7px] border border-newTextColor/5 bg-newSettings">
+              <VideoOrImage
+                src={mediaDirectory.set(firstMedia.path)}
+                autoplay={false}
+                imageClassName="object-cover"
+                videoClassName="object-cover"
+              />
             </div>
+          )}
+          <div
+            className={clsx(
+              'w-full break-words text-start leading-[1.45]',
+              display === 'month'
+                ? !contentExpanded && 'line-clamp-4'
+                : 'line-clamp-1'
+            )}
+          >
+            {content}
+          </div>
+          {canExpandContent && (
+            <button
+              type="button"
+              className="self-start text-[10px] font-[600] text-btnPrimary hover:underline"
+              onClick={(event) => {
+                event.stopPropagation();
+                setContentExpanded((expanded) => !expanded);
+              }}
+            >
+              {contentExpanded
+                ? t('show_less', 'Show less')
+                : t('show_more', 'Show more')}
+            </button>
+          )}
+          {display === 'month' && firstMedia && (
+            <div className="text-start text-[9px] text-textColor/40">
+              {firstMedia.name || t('media_preview', 'Media preview')}
+            </div>
+          )}
         </div>
         {showTime && (
           <div className="text-textColor/50 text-[12px] whitespace-nowrap flex items-center">

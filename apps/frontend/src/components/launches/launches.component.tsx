@@ -359,7 +359,7 @@ export const LaunchesComponent = () => {
   const fireEvents = useFireEvents();
   const t = useT();
   const [reload, setReload] = useState(false);
-  const [collapseMenu, setCollapseMenu] = useCookie('collapseMenu', '0');
+  const [collapseMenu, setCollapseMenu] = useCookie('collapseMenu', '1');
   const [mode] = useCookie('mode', 'dark');
   const { isLoading, data: integrations, mutate } = useIntegrationList();
 

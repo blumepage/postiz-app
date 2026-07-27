@@ -32,6 +32,7 @@ export const CalendarContext = createContext({
   startDate: newDayjs().startOf('isoWeek').format('YYYY-MM-DD'),
   endDate: newDayjs().endOf('isoWeek').format('YYYY-MM-DD'),
   customer: null as string | null,
+  now: newDayjs(),
   loading: true,
   sets: [] as { name: string; id: string; content: string[] }[],
   signature: undefined as any,
@@ -142,6 +143,7 @@ export const CalendarWeekProvider: FC<{
   integrations: Integrations[];
 }> = ({ children, integrations }) => {
   const fetch = useFetch();
+  const [now, setNow] = useState(() => newDayjs());
   const [internalData, setInternalData] = useState([] as any[]);
   const [trendings] = useState<string[]>([]);
   const searchParams = useSearchParams();
@@ -173,6 +175,11 @@ export const CalendarWeekProvider: FC<{
     display,
   });
 
+  useEffect(() => {
+    const interval = window.setInterval(() => setNow(newDayjs()), 60_000);
+    return () => window.clearInterval(interval);
+  }, []);
+
   const params = useMemo(() => {
     return new URLSearchParams({
       display: filters.display,
@@ -184,11 +191,21 @@ export const CalendarWeekProvider: FC<{
 
   // Calendar view data fetcher
   const loadData = useCallback(async () => {
+    const calendarStart = newDayjs(filters.startDate);
+    const calendarEnd = newDayjs(filters.endDate);
+    const queryStart =
+      filters.display === 'month'
+        ? calendarStart.subtract(6, 'month').startOf('month')
+        : calendarStart;
+    const queryEnd =
+      filters.display === 'month'
+        ? calendarEnd.add(6, 'month').endOf('month')
+        : calendarEnd;
     const modifiedParams = new URLSearchParams({
       display: filters.display,
       customer: filters?.customer?.toString() || '',
-      startDate: newDayjs(filters.startDate).startOf('day').utc().format(),
-      endDate: newDayjs(filters.endDate).endOf('day').utc().format(),
+      startDate: queryStart.startOf('day').utc().format(),
+      endDate: queryEnd.endOf('day').utc().format(),
     }).toString();
 
     const data = await (await fetch(`/posts?${modifiedParams}`)).json();
@@ -337,6 +354,7 @@ export const CalendarWeekProvider: FC<{
   return (
     <CalendarContext.Provider
       value={{
+        now,
         trendings,
         reloadCalendarView,
         ...filters,
