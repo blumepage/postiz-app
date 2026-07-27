@@ -491,6 +491,16 @@ export const MonthView = () => {
   const { startDate } = useCalendar();
   const scrollContainer = useRef<HTMLDivElement>(null);
   const anchorMonth = useRef<HTMLDivElement>(null);
+  const anchorWeekIndex = useMemo(() => {
+    const selectedMonth = newDayjs(startDate).startOf('month');
+    const today = newDayjs();
+    const targetDate = today.isSame(selectedMonth, 'month')
+      ? today
+      : selectedMonth;
+    const leadingDays = selectedMonth.isoWeekday() - 1;
+
+    return Math.floor((leadingDays + targetDate.date() - 1) / 7);
+  }, [startDate]);
 
   // Use dayjs to get localized day names
   const localizedDays = useMemo(() => {
@@ -533,8 +543,17 @@ export const MonthView = () => {
     if (!container || !anchor) {
       return;
     }
-    container.scrollTop = Math.max(0, anchor.offsetTop - 104);
-  }, [startDate, months]);
+    const stickyHeadersHeight = 104;
+    const monthHeaderHeight = 46;
+    const weekRowHeight = 264;
+    container.scrollTop = Math.max(
+      0,
+      anchor.offsetTop +
+        monthHeaderHeight +
+        anchorWeekIndex * weekRowHeight -
+        stickyHeadersHeight
+    );
+  }, [anchorWeekIndex, months]);
 
   return (
     <div className="flex flex-col text-textColor flex-1 relative min-w-0">
