@@ -22,8 +22,10 @@ interface OpenModalInterface {
   removeLayout?: boolean;
   fullScreen?: boolean;
   top?: string | number;
+  /** @deprecated Escape closes the topmost modal globally. */
   closeOnEscape?: boolean;
   withCloseButton?: boolean;
+  /** @deprecated Closing a modal is immediate. Use an explicit decision dialog for destructive actions. */
   askClose?: boolean;
   onClose?: () => void;
   children: ReactNode | ((close: () => void) => ReactNode);
@@ -101,17 +103,10 @@ export const Component: FC<{
   isLast: boolean;
   modal: { id: string } & OpenModalInterface;
 }> = memo(({ isLast, modal, closeModal, zIndex }) => {
-  const decision = useDecisionModal();
-  const closeModalFunction = useCallback(async () => {
-    if (modal.askClose) {
-      const open = await decision.open();
-      if (!open) {
-        return;
-      }
-    }
+  const closeModalFunction = useCallback(() => {
     modal?.onClose?.();
     closeModal(modal.id);
-  }, [modal.id, closeModal]);
+  }, [modal, closeModal]);
 
   const RenderComponent = useMemo(() => {
     return typeof modal.children === 'function'
@@ -122,11 +117,17 @@ export const Component: FC<{
   useHotkeys(
     'Escape',
     () => {
-      if (isLast && modal.closeOnEscape !== false) {
+      if (isLast) {
         closeModalFunction();
       }
     },
-    [isLast, modal.closeOnEscape, closeModalFunction]
+    {
+      enabled: isLast,
+      enableOnFormTags: true,
+      enableOnContentEditable: true,
+      preventDefault: true,
+    },
+    [isLast, closeModalFunction]
   );
 
   if (modal.removeLayout) {
