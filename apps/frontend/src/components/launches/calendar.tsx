@@ -89,6 +89,59 @@ const convertTimeFormatBasedOnLocality = (time: number) => {
   }
 };
 
+const calendarPostTypeLabels: Record<string, string> = {
+  x: 'X Post',
+  linkedin: 'LinkedIn Post',
+  'linkedin-page': 'LinkedIn Post',
+  youtube: 'YouTube Video',
+  tiktok: 'TikTok Video',
+  instagram: 'Instagram Post',
+  'instagram-standalone': 'Instagram Post',
+  facebook: 'Facebook Post',
+  threads: 'Threads Post',
+  reddit: 'Reddit Post',
+  pinterest: 'Pinterest Pin',
+  bluesky: 'Bluesky Post',
+  mastodon: 'Mastodon Post',
+  'mastodon-custom': 'Mastodon Post',
+  wrapcast: 'Farcaster Cast',
+  discord: 'Discord Message',
+  slack: 'Slack Message',
+  telegram: 'Telegram Message',
+  wordpress: 'WordPress Post',
+  sanity: 'Sanity Article',
+  medium: 'Medium Article',
+  hashnode: 'Hashnode Article',
+  devto: 'DEV Article',
+  listmonk: 'Listmonk Email',
+  gmb: 'Google Business Post',
+  dribbble: 'Dribbble Shot',
+  nostr: 'Nostr Note',
+  lemmy: 'Lemmy Post',
+  skool: 'Skool Post',
+  vk: 'VK Post',
+  twitch: 'Twitch Post',
+  kick: 'Kick Post',
+  whop: 'Whop Post',
+  mewe: 'MeWe Post',
+  tumblr: 'Tumblr Post',
+  moltbook: 'Moltbook Post',
+};
+
+const getCalendarPostTypeLabel = (identifier?: string) => {
+  if (!identifier) {
+    return 'Post';
+  }
+
+  return (
+    calendarPostTypeLabels[identifier] ||
+    `${identifier
+      .split('-')
+      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+      .join(' ')} Post`
+  );
+};
+
 export const hours = Array.from(
   {
     length: 24,
@@ -1222,8 +1275,8 @@ const CalendarItem: FC<{
       )}
       <div
         className={clsx(
-          'relative min-h-[34px] w-full rounded-t-[10px] border border-b-0 border-newTextColor/5',
-          'flex items-center gap-[6px] bg-newSettings/75 px-[7px] text-[10px] text-textColor/70'
+          'relative min-h-[42px] w-full rounded-t-[10px] border border-b-0 border-newTextColor/5',
+          'flex items-center gap-[6px] bg-newSettings/75 px-[7px]'
         )}
       >
         <SafeImage
@@ -1246,10 +1299,13 @@ const CalendarItem: FC<{
             style={{ backgroundColor: post.tags[0].tag.color }}
           />
         )}
-        <div className="min-w-0 flex-1 truncate">
-          {post.tags.map((p) => p.tag.name).join(', ') ||
-            post.integration.name ||
-            t('untagged_post', 'Post')}
+        <div className="min-w-0 flex-1">
+          <div className="truncate text-[10px] font-[500] leading-[13px] text-textColor/75">
+            {post.integration.name || t('untagged_post', 'Post')}
+          </div>
+          <div className="truncate text-[9px] leading-[11px] text-textColor/40">
+            {getCalendarPostTypeLabel(post.integration?.providerIdentifier)}
+          </div>
         </div>
         <CalendarItemActions
           copyDebugJson={copyDebugJson}
