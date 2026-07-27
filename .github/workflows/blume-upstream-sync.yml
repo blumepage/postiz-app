@@ -1,0 +1,76 @@
+name: Sync Postiz upstream
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '17 7 * * 1'
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: blume
+          fetch-depth: 0
+
+      - name: Fetch upstream and refresh mirror branch
+        run: |
+          git remote add upstream https://github.com/gitroomhq/postiz-app.git
+          git fetch upstream main
+          git push origin upstream/main:main
+
+      - name: Merge upstream into an update branch
+        id: merge
+        env:
+          SYNC_BRANCH: automation/upstream-sync
+        run: |
+          git config user.name "blume-upstream-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git switch -C "$SYNC_BRANCH" origin/blume
+          if git merge --no-edit upstream/main; then
+            git push --force-with-lease origin "$SYNC_BRANCH"
+            echo "merged=true" >> "$GITHUB_OUTPUT"
+          else
+            git diff --name-only --diff-filter=U > /tmp/postiz-conflicts.txt
+            git merge --abort
+            echo "merged=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Open or refresh the upstream update pull request
+        if: steps.merge.outputs.merged == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if git diff --quiet origin/blume...origin/automation/upstream-sync; then
+            exit 0
+          fi
+          gh pr create \
+            --base blume \
+            --head automation/upstream-sync \
+            --title "chore: merge latest Postiz upstream" \
+            --body "Automated weekly merge of gitroomhq/postiz-app main into the Blume customization branch." \
+            || gh pr edit automation/upstream-sync \
+              --title "chore: merge latest Postiz upstream" \
+              --body "Automated weekly merge of gitroomhq/postiz-app main into the Blume customization branch."
+
+      - name: Report merge conflicts
+        if: steps.merge.outputs.merged == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          conflicts="$(sed -n '1,80p' /tmp/postiz-conflicts.txt)"
+          gh issue create \
+            --title "Postiz upstream sync needs manual conflict resolution" \
+            --body "The weekly upstream merge conflicted in:
+
+          \`\`\`
+          ${conflicts}
+          \`\`\`
+
+          Fetch \`upstream/main\`, merge it into \`blume\`, resolve these files, and keep Blume-specific changes isolated."
