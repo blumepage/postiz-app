@@ -630,6 +630,7 @@ export const ListView = () => {
               {datePosts.map((post) => (
                 <CalendarItem
                   key={post.id}
+                  compact
                   isBeforeNow={false}
                   date={newDayjs(post.publishDate)}
                   state={post.state}
@@ -1081,6 +1082,7 @@ const CalendarItem: FC<{
   integrations: Integrations[];
   state: State;
   showTime?: boolean;
+  compact?: boolean;
   post: Post & {
     integration: Integration;
     tags: {
@@ -1101,10 +1103,14 @@ const CalendarItem: FC<{
     deletePost,
     showTime,
     missingRelease,
+    compact = false,
   } = props;
   const { disableXAnalytics } = useVariables();
   const mediaDirectory = useMediaDirectory();
   const [contentExpanded, setContentExpanded] = useState(false);
+  const [contentOverflows, setContentOverflows] = useState(false);
+  const [actionsOpen, setActionsOpen] = useState(false);
+  const contentRef = useRef<HTMLDivElement>(null);
   const user = useUser();
   const showCreationMethodBadge =
     user?.impersonate &&
@@ -1129,7 +1135,27 @@ const CalendarItem: FC<{
       return undefined;
     }
   }, [post.image]);
-  const canExpandContent = content.length > 110;
+  useEffect(() => {
+    setContentExpanded(false);
+  }, [content]);
+
+  useEffect(() => {
+    const element = contentRef.current;
+    if (!element || contentExpanded) {
+      return;
+    }
+
+    const measureOverflow = () => {
+      setContentOverflows(element.scrollHeight > element.clientHeight + 1);
+    };
+    measureOverflow();
+
+    const observer = new ResizeObserver(measureOverflow);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [compact, content, contentExpanded]);
+
+  const canExpandContent = contentOverflows || contentExpanded;
   const [{ opacity }, dragRef] = useDrag(
     () => ({
       type: 'post',
@@ -1146,11 +1172,10 @@ const CalendarItem: FC<{
   );
   return (
     <div
-      // @ts-ignore
-      ref={dragRef}
       className={clsx(
         'w-full flex h-full flex-1 flex-col group',
         'relative',
+        actionsOpen && 'z-[110]',
         state === 'ERROR' && 'rounded-[10px] ring-2 ring-red-500'
       )}
       style={{
@@ -1221,43 +1246,53 @@ const CalendarItem: FC<{
               : statistics
           }
           deletePost={deletePost}
+          onOpenChange={setActionsOpen}
         />
       </div>
       <div
         onClick={editPost}
         className={clsx(
-          'relative flex min-h-[118px] w-full flex-1 rounded-b-[10px] border border-t-0 border-newTextColor/5',
+          'relative flex w-full flex-1 rounded-b-[10px] border border-t-0 border-newTextColor/5',
+          compact ? 'min-h-[72px]' : 'min-h-[118px]',
           'bg-newColColor p-[7px] text-[11px]',
           isBeforeNow && '!grayscale'
         )}
       >
         <div className="w-full min-w-0 flex-1 flex flex-col gap-[5px]">
-          <div className="flex items-center justify-between gap-[6px] text-start text-[10px] text-textColor/55">
-            <span>
-              {state === 'DRAFT'
-                ? t('draft', 'Draft')
-                : newDayjs(post.publishDate)
-                    .local()
-                    .format(isUSCitizen() ? 'hh:mm A' : 'HH:mm')}
-            </span>
-          </div>
-          {firstMedia?.path && (
-            <div className="h-[82px] w-full overflow-hidden rounded-[7px] border border-newTextColor/5 bg-newSettings">
-              <VideoOrImage
-                src={mediaDirectory.set(firstMedia.path)}
-                autoplay={false}
-                imageClassName="object-cover"
-                videoClassName="object-cover"
-              />
-            </div>
-          )}
           <div
-            className={clsx(
-              'w-full break-words text-start leading-[1.45]',
-              !contentExpanded && 'line-clamp-4'
-            )}
+            // @ts-ignore
+            ref={dragRef}
+            className="flex min-w-0 flex-col gap-[5px]"
           >
-            {content}
+            <div className="flex items-center justify-between gap-[6px] text-start text-[10px] text-textColor/55">
+              <span>
+                {state === 'DRAFT'
+                  ? t('draft', 'Draft')
+                  : newDayjs(post.publishDate)
+                      .local()
+                      .format(isUSCitizen() ? 'hh:mm A' : 'HH:mm')}
+              </span>
+            </div>
+            {!compact && firstMedia?.path && (
+              <div className="h-[82px] w-full overflow-hidden rounded-[7px] border border-newTextColor/5 bg-newSettings">
+                <VideoOrImage
+                  src={mediaDirectory.set(firstMedia.path)}
+                  autoplay={false}
+                  imageClassName="object-cover"
+                  videoClassName="object-cover"
+                />
+              </div>
+            )}
+            <div
+              ref={contentRef}
+              className={clsx(
+                'w-full break-words text-start leading-[1.45]',
+                !contentExpanded &&
+                  (compact ? 'line-clamp-2' : 'line-clamp-4')
+              )}
+            >
+              {content}
+            </div>
           </div>
           {canExpandContent && (
             <button
@@ -1292,29 +1327,55 @@ const CalendarItemActions: FC<{
   preview: () => void;
   statistics?: () => void;
   deletePost: () => void;
-}> = ({ copyDebugJson, duplicatePost, preview, statistics, deletePost }) => {
+  onOpenChange: (open: boolean) => void;
+}> = ({
+  copyDebugJson,
+  duplicatePost,
+  preview,
+  statistics,
+  deletePost,
+  onOpenChange,
+}) => {
   const t = useT();
   const [open, setOpen] = useState(false);
-  const ref = useClickOutside(() => setOpen(false));
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const closeMenu = useCallback(() => {
+    setOpen(false);
+    onOpenChange(false);
+  }, [onOpenChange]);
+  const ref = useClickOutside(closeMenu);
   const runAction = useCallback(
     (action: () => void) => (event: React.MouseEvent) => {
       event.stopPropagation();
-      setOpen(false);
+      closeMenu();
       action();
     },
-    []
+    [closeMenu]
   );
 
   return (
-    <div ref={ref} className="relative ms-auto shrink-0">
+    <div
+      ref={ref}
+      className="relative ms-auto shrink-0"
+      onKeyDown={(event) => {
+        if (event.key === 'Escape' && open) {
+          event.preventDefault();
+          closeMenu();
+          triggerRef.current?.focus();
+        }
+      }}
+    >
       <button
+        ref={triggerRef}
         type="button"
         aria-label={t('post_actions', 'Post actions')}
         aria-expanded={open}
         onMouseDown={(event) => event.stopPropagation()}
         onClick={(event) => {
           event.stopPropagation();
-          setOpen((current) => !current);
+          const next = !open;
+          setOpen(next);
+          onOpenChange(next);
         }}
         className={clsx(
           'flex h-[24px] w-[24px] items-center justify-center rounded-[6px]',
@@ -1325,7 +1386,8 @@ const CalendarItemActions: FC<{
       </button>
       {open && (
         <div
-          role="menu"
+          role="group"
+          aria-label={t('post_actions', 'Post actions')}
           className={clsx(
             'absolute end-0 top-[calc(100%+4px)] z-[100] min-w-[152px] overflow-hidden',
             'rounded-[8px] border border-newTextColor/10 bg-newSettings p-[4px] text-[11px]',
@@ -1378,7 +1440,6 @@ const CalendarAction: FC<{
 }> = ({ icon, label, destructive, onClick }) => (
   <button
     type="button"
-    role="menuitem"
     onClick={onClick}
     className={clsx(
       'flex w-full items-center gap-[9px] rounded-[6px] px-[8px] py-[7px] text-start',

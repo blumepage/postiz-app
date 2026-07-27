@@ -1,0 +1,113 @@
+// Blume's fork-level theme. Keep these overrides semantic and centralized so
+// upstream Postiz component updates can continue to merge with minimal churn.
+:root {
+  .dark {
+    --blume-background: #09090b;
+    --blume-surface: #111113;
+    --blume-surface-raised: #18181b;
+    --blume-surface-subtle: #1f1f23;
+    --blume-border: #27272a;
+    --blume-border-strong: #3f3f46;
+    --blume-foreground: #fafafa;
+    --blume-foreground-rgb: 250 250 250;
+    --blume-muted-foreground: #a1a1aa;
+    --blume-accent: #7c3aed;
+    --blume-accent-hover: #8b5cf6;
+
+    --new-back-drop: #09090b;
+    --new-settings: var(--blume-surface-raised);
+    --new-border: var(--blume-border);
+    --new-bgColor: var(--blume-background);
+    --new-bgColorInner: var(--blume-surface);
+    --new-sep: var(--blume-border-strong);
+    --new-bgLineColor: var(--blume-border);
+    --new-textItemFocused: var(--blume-foreground);
+    --new-textItemBlur: var(--blume-muted-foreground);
+    --new-boxFocused: var(--blume-surface-raised);
+    --new-textColor: var(--blume-foreground-rgb);
+    --new-blockSeparator: var(--blume-border);
+    --new-btn-simple: var(--blume-surface-raised);
+    --new-btn-text: var(--blume-foreground);
+    --new-btn-primary: var(--blume-accent);
+    --new-box-hover: var(--blume-surface-subtle);
+    --new-table-border: var(--blume-border);
+    --new-table-header: var(--blume-surface-raised);
+    --new-table-text: var(--blume-muted-foreground);
+    --new-table-text-focused: var(--blume-accent-hover);
+    --new-small-strips: var(--blume-surface-raised);
+    --new-big-strips: var(--blume-surface);
+    --new-col-color: var(--blume-border);
+    --new-menu-dots: var(--blume-muted-foreground);
+    --new-menu-hover: var(--blume-foreground);
+    --menu-shadow: 0 12px 32px rgba(0, 0, 0, 0.32);
+    --popup-color: rgba(9, 9, 11, 0.62);
+
+    --color-primary: var(--blume-background);
+    --color-secondary: var(--blume-surface);
+    --color-text: var(--blume-foreground);
+    --color-third: var(--blume-surface-raised);
+    --color-forth: var(--blume-accent);
+    --color-fifth: var(--blume-border);
+    --color-sixth: var(--blume-surface-raised);
+    --color-seventh: var(--blume-accent-hover);
+    --color-gray: var(--blume-muted-foreground);
+    --color-input: var(--blume-surface-raised);
+    --color-input-text: var(--blume-muted-foreground);
+    --color-table-border: var(--blume-border);
+  }
+
+  .light {
+    --blume-background: #fafafa;
+    --blume-surface: #ffffff;
+    --blume-surface-raised: #f4f4f5;
+    --blume-surface-subtle: #f7f7f8;
+    --blume-border: #e4e4e7;
+    --blume-border-strong: #d4d4d8;
+    --blume-foreground: #09090b;
+    --blume-foreground-rgb: 9 9 11;
+    --blume-muted-foreground: #71717a;
+    --blume-accent: #6d28d9;
+    --blume-accent-hover: #7c3aed;
+
+    --new-back-drop: rgba(9, 9, 11, 0.55);
+    --new-settings: var(--blume-surface-raised);
+    --new-border: var(--blume-border);
+    --new-bgColor: var(--blume-background);
+    --new-bgColorInner: var(--blume-surface);
+    --new-sep: var(--blume-border-strong);
+    --new-bgLineColor: var(--blume-border);
+    --new-textItemFocused: var(--blume-foreground);
+    --new-textItemBlur: var(--blume-muted-foreground);
+    --new-boxFocused: var(--blume-surface-raised);
+    --new-textColor: var(--blume-foreground-rgb);
+    --new-blockSeparator: var(--blume-border);
+    --new-btn-simple: var(--blume-surface-raised);
+    --new-btn-text: var(--blume-foreground);
+    --new-btn-primary: var(--blume-accent);
+    --new-box-hover: var(--blume-surface-subtle);
+    --new-table-border: var(--blume-border);
+    --new-table-header: var(--blume-surface-raised);
+    --new-table-text: var(--blume-muted-foreground);
+    --new-table-text-focused: var(--blume-accent-hover);
+    --new-small-strips: var(--blume-surface-raised);
+    --new-big-strips: var(--blume-surface);
+    --new-col-color: var(--blume-border);
+    --new-menu-dots: var(--blume-muted-foreground);
+    --new-menu-hover: var(--blume-foreground);
+    --menu-shadow: 0 12px 32px rgba(9, 9, 11, 0.12);
+    --popup-color: rgba(9, 9, 11, 0.14);
+
+    --color-primary: var(--blume-background);
+    --color-secondary: var(--blume-surface);
+    --color-text: var(--blume-foreground);
+    --color-third: var(--blume-surface-raised);
+    --color-forth: var(--blume-accent);
+    --color-fifth: var(--blume-border);
+    --color-sixth: var(--blume-surface-raised);
+    --color-seventh: var(--blume-accent-hover);
+    --color-gray: var(--blume-muted-foreground);
+    --color-input: var(--blume-surface-raised);
+    --color-input-text: var(--blume-muted-foreground);
+    --color-table-border: var(--blume-border);
+  }
+}
