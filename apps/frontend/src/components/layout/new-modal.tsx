@@ -122,11 +122,11 @@ export const Component: FC<{
   useHotkeys(
     'Escape',
     () => {
-      if (isLast) {
+      if (isLast && modal.closeOnEscape !== false) {
         closeModalFunction();
       }
     },
-    [isLast, closeModalFunction]
+    [isLast, modal.closeOnEscape, closeModalFunction]
   );
 
   if (modal.removeLayout) {
@@ -168,7 +168,11 @@ export const Component: FC<{
   return (
     <CurrentModalContext.Provider value={{ id: modal.id }}>
       <div
-        onClick={closeModalFunction}
+        onClick={() => {
+          if (modal.closeOnClickOutside !== false) {
+            closeModalFunction();
+          }
+        }}
         style={{ zIndex }}
         className={clsx(
           'fixed flex left-0 top-0 min-w-full min-h-full bg-popup transition-all animate-fadeIn overflow-y-auto text-newTextColor',

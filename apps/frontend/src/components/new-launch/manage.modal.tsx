@@ -70,7 +70,6 @@ export const ManageModal: FC<AddEditModalProps> = (props) => {
     setSelectedIntegrations,
     locked,
     current,
-    activateExitButton,
     setHide,
   } = useLaunchStore(
     useShallow((state) => ({
@@ -87,7 +86,6 @@ export const ManageModal: FC<AddEditModalProps> = (props) => {
       integrations: state.integrations,
       setSelectedIntegrations: state.setSelectedIntegrations,
       locked: state.locked,
-      activateExitButton: state.activateExitButton,
     }))
   );
 
@@ -146,27 +144,13 @@ export const ManageModal: FC<AddEditModalProps> = (props) => {
     [integrations]
   );
 
-  const askClose = useCallback(async () => {
-    if (!activateExitButton || dummy) {
+  const closeEditor = useCallback(() => {
+    if (customClose) {
+      customClose();
       return;
     }
-
-    if (
-      await deleteDialog(
-        t(
-          'are_you_sure_you_want_to_close_this_modal_all_data_will_be_lost',
-          'Are you sure you want to close this modal? (all data will be lost)'
-        ),
-        t('yes_close_it', 'Yes, close it!')
-      )
-    ) {
-      if (customClose) {
-        customClose();
-        return;
-      }
-      modal.closeAll();
-    }
-  }, [activateExitButton, dummy]);
+    modal.closeAll();
+  }, [customClose, modal]);
 
   const deletePost = useCallback(async () => {
     setLoading(true);
@@ -536,7 +520,7 @@ export const ManageModal: FC<AddEditModalProps> = (props) => {
             <div className="bg-newBgColor h-[65px] rounded-e-[20px] !rounded-b-[0] flex items-center px-[20px] text-[20px] font-[600]">
               <div className="flex-1">{t('post_preview', 'Post Preview')}</div>
               <div className="cursor-pointer">
-                <CloseIcon onClick={askClose} className="text-[#A3A3A3]" />
+                <CloseIcon onClick={closeEditor} className="text-[#A3A3A3]" />
               </div>
             </div>
             <div className="flex-1 relative">

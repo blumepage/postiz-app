@@ -60,6 +60,7 @@ import { newDayjs } from '@gitroom/frontend/components/layout/set.timezone';
 import { Button } from '@gitroom/react/form/button';
 import { useMediaDirectory } from '@gitroom/react/helpers/use.media.directory';
 import { VideoOrImage } from '@gitroom/react/helpers/video.or.image';
+import { useClickOutside } from '@mantine/hooks';
 
 // Extend dayjs with necessary plugins
 extend(isSameOrAfter);
@@ -119,9 +120,7 @@ const usePostActions = (onMutate?: () => void) => {
       const date = !isDuplicate
         ? null
         : (await (await fetch('/posts/find-slot')).json()).date;
-      const publishDate = dayjs
-        .utc(date || data.posts[0].publishDate)
-        .local();
+      const publishDate = dayjs.utc(date || data.posts[0].publishDate).local();
       const ExistingData = !isDuplicate
         ? ExistingDataContextProvider
         : Fragment;
@@ -245,16 +244,20 @@ const usePostActions = (onMutate?: () => void) => {
         classNames: {
           modal: 'w-[100%] max-w-[800px]',
         },
-        children: (
-          <MissingReleaseModal postId={id} onSuccess={mutate} />
-        ),
+        children: <MissingReleaseModal postId={id} onSuccess={mutate} />,
         size: '60%',
       });
     },
     [modal, t, mutate]
   );
 
-  return { editPost, deletePost, copyDebugJson, openStatistics, openMissingRelease };
+  return {
+    editPost,
+    deletePost,
+    copyDebugJson,
+    openStatistics,
+    openMissingRelease,
+  };
 };
 
 export const DayView = () => {
@@ -576,7 +579,13 @@ export const ListView = () => {
       : t('no_posts', 'No posts');
 
   // Use shared post actions hook
-  const { editPost, deletePost, copyDebugJson, openStatistics, openMissingRelease } = usePostActions();
+  const {
+    editPost,
+    deletePost,
+    copyDebugJson,
+    openStatistics,
+    openMissingRelease,
+  } = usePostActions();
 
   // Group posts by date
   const groupedPosts = useMemo(() => {
@@ -613,13 +622,14 @@ export const ListView = () => {
         {groupedPosts.map(([dateKey, datePosts]) => (
           <Fragment key={dateKey}>
             <div className="text-center text-[14px] min-h-[21px] text-textColor font-[500] mt-[10px]">
-              {newDayjs(dateKey).format(isUSCitizen() ? 'dddd, MMMM D, YYYY' : 'dddd, D MMMM YYYY')}
+              {newDayjs(dateKey).format(
+                isUSCitizen() ? 'dddd, MMMM D, YYYY' : 'dddd, D MMMM YYYY'
+              )}
             </div>
             <div className="flex flex-col gap-[10px] mb-[20px] px-[10px]">
               {datePosts.map((post) => (
                 <CalendarItem
                   key={post.id}
-                  display="day"
                   isBeforeNow={false}
                   date={newDayjs(post.publishDate)}
                   state={post.state}
@@ -627,7 +637,9 @@ export const ListView = () => {
                   missingRelease={openMissingRelease(post.id)}
                   editPost={editPost(post, false)}
                   duplicatePost={editPost(post, true)}
-                  copyDebugJson={user?.isSuperAdmin ? copyDebugJson(post) : undefined}
+                  copyDebugJson={
+                    user?.isSuperAdmin ? copyDebugJson(post) : undefined
+                  }
                   post={post}
                   integrations={integrations}
                   deletePost={deletePost(post)}
@@ -681,7 +693,13 @@ export const CalendarColumn: FC<{
   const fetch = useFetch();
 
   // Use shared post actions hook
-  const { editPost, deletePost, copyDebugJson, openStatistics, openMissingRelease } = usePostActions();
+  const {
+    editPost,
+    deletePost,
+    copyDebugJson,
+    openStatistics,
+    openMissingRelease,
+  } = usePostActions();
   const postList = useMemo(() => {
     return posts.filter((post) => {
       const pList = dayjs.utc(post.publishDate).local();
@@ -712,98 +730,105 @@ export const CalendarColumn: FC<{
 
   const isBeforeNow = useMemo(() => {
     const originalUtc = getDate.startOf('hour');
-    return originalUtc
-      .startOf('hour')
-      .isBefore(now.startOf('hour').utc());
+    return originalUtc.startOf('hour').isBefore(now.startOf('hour').utc());
   }, [getDate, now]);
-  const [{ canDrop }, drop] = useDrop(() => ({
-    accept: 'post',
-    drop: async (item: any) => {
-      if (isBeforeNow) return;
+  const [{ canDrop }, drop] = useDrop(
+    () => ({
+      accept: 'post',
+      drop: async (item: any) => {
+        if (isBeforeNow) return;
 
-      // Find the post to check its state
-      const post = posts.find((p) => p.id === item.id);
-      let action: 'schedule' | 'update' = 'schedule';
+        // Find the post to check its state
+        const post = posts.find((p) => p.id === item.id);
+        let action: 'schedule' | 'update' = 'schedule';
 
-      // Check if post is already published or queued in the past
-      if (
-        post &&
-        (post.state === 'PUBLISHED' ||
-          (post.state === 'QUEUE' && dayjs().isAfter(dayjs.utc(post.publishDate))))
-      ) {
-        const whatToDo = await new Promise<'schedule' | 'update' | 'cancel'>(
-          (resolve) => {
-            modal.openModal({
-              title: t('what_do_you_want_to_do', 'What do you want to do?'),
-              children: (
-                <div className="flex flex-col">
-                  <div className="text-[20px] mb-[20px]">
-                    {t(
-                      'post_already_published_drag',
-                      'This post was already published, what do you want to do?'
-                    )}
-                  </div>
-                  <div className="flex w-full gap-[10px]">
-                    <div className="flex-1 flex">
-                      <Button
-                        type="button"
-                        className="flex-1"
-                        onClick={() => {
-                          modal.closeAll();
-                          resolve('update');
-                        }}
-                      >
-                        {t('just_update_post_details', 'Just update the post details')}
-                      </Button>
+        // Check if post is already published or queued in the past
+        if (
+          post &&
+          (post.state === 'PUBLISHED' ||
+            (post.state === 'QUEUE' &&
+              dayjs().isAfter(dayjs.utc(post.publishDate))))
+        ) {
+          const whatToDo = await new Promise<'schedule' | 'update' | 'cancel'>(
+            (resolve) => {
+              modal.openModal({
+                title: t('what_do_you_want_to_do', 'What do you want to do?'),
+                children: (
+                  <div className="flex flex-col">
+                    <div className="text-[20px] mb-[20px]">
+                      {t(
+                        'post_already_published_drag',
+                        'This post was already published, what do you want to do?'
+                      )}
                     </div>
-                    <div className="flex-1 flex">
-                      <Button
-                        type="button"
-                        className="flex-1"
-                        onClick={() => {
-                          modal.closeAll();
-                          resolve('schedule');
-                        }}
-                      >
-                        {t('reschedule_post', 'Reschedule the post')}
-                      </Button>
+                    <div className="flex w-full gap-[10px]">
+                      <div className="flex-1 flex">
+                        <Button
+                          type="button"
+                          className="flex-1"
+                          onClick={() => {
+                            modal.closeAll();
+                            resolve('update');
+                          }}
+                        >
+                          {t(
+                            'just_update_post_details',
+                            'Just update the post details'
+                          )}
+                        </Button>
+                      </div>
+                      <div className="flex-1 flex">
+                        <Button
+                          type="button"
+                          className="flex-1"
+                          onClick={() => {
+                            modal.closeAll();
+                            resolve('schedule');
+                          }}
+                        >
+                          {t('reschedule_post', 'Reschedule the post')}
+                        </Button>
+                      </div>
                     </div>
                   </div>
-                </div>
-              ),
-              onClose: () => resolve('cancel'),
-            });
+                ),
+                onClose: () => resolve('cancel'),
+              });
+            }
+          );
+
+          if (whatToDo === 'cancel') {
+            return;
           }
-        );
+          action = whatToDo;
+        }
 
-        if (whatToDo === 'cancel') {
+        if (!item.interval) {
+          changeDate(item.id, getDate);
+        }
+        const { status } = await fetch(`/posts/${item.id}/date`, {
+          method: 'PUT',
+          body: JSON.stringify({
+            date: getDate.utc().format('YYYY-MM-DDTHH:mm:ss'),
+            action,
+          }),
+        });
+        if (status !== 500) {
+          if (item.interval || action === 'schedule') {
+            reloadCalendarView();
+            return;
+          }
           return;
         }
-        action = whatToDo;
-      }
-
-      if (!item.interval) {
-        changeDate(item.id, getDate);
-      }
-      const { status } = await fetch(`/posts/${item.id}/date`, {
-        method: 'PUT',
-        body: JSON.stringify({
-          date: getDate.utc().format('YYYY-MM-DDTHH:mm:ss'),
-          action,
-        }),
-      });
-      if (status !== 500) {
-        if (item.interval || action === 'schedule') {
-          reloadCalendarView();
-          return;
-        }
-        return;
-      }
-    },
-    collect: (monitor) => ({
-      canDrop: isBeforeNow ? false : !!monitor.canDrop() && !!monitor.isOver(),
+      },
+      collect: (monitor) => ({
+        canDrop: isBeforeNow
+          ? false
+          : !!monitor.canDrop() && !!monitor.isOver(),
+      }),
     }),
-  }), [posts]);
+    [posts]
+  );
 
   const addModal = useCallback(async () => {
     const set: any = !sets.length
@@ -934,7 +959,6 @@ export const CalendarColumn: FC<{
             >
               <div className="relative w-full flex flex-col items-center p-[2.5px]">
                 <CalendarItem
-                  display={display as 'day' | 'week' | 'month'}
                   isBeforeNow={isBeforeNow}
                   date={getDate}
                   state={post.state}
@@ -942,7 +966,9 @@ export const CalendarColumn: FC<{
                   missingRelease={openMissingRelease(post.id)}
                   editPost={editPost(post, false)}
                   duplicatePost={editPost(post, true)}
-                  copyDebugJson={user?.isSuperAdmin ? copyDebugJson(post) : undefined}
+                  copyDebugJson={
+                    user?.isSuperAdmin ? copyDebugJson(post) : undefined
+                  }
                   post={post}
                   integrations={integrations}
                   deletePost={deletePost(post)}
@@ -1054,7 +1080,6 @@ const CalendarItem: FC<{
   missingRelease?: () => void;
   integrations: Integrations[];
   state: State;
-  display: 'day' | 'week' | 'month';
   showTime?: boolean;
   post: Post & {
     integration: Integration;
@@ -1073,7 +1098,6 @@ const CalendarItem: FC<{
     date,
     isBeforeNow,
     state,
-    display,
     deletePost,
     showTime,
     missingRelease,
@@ -1105,7 +1129,7 @@ const CalendarItem: FC<{
       return undefined;
     }
   }, [post.image]);
-  const canExpandContent = display === 'month' && content.length > 110;
+  const canExpandContent = content.length > 110;
   const [{ opacity }, dragRef] = useDrag(
     () => ({
       type: 'post',
@@ -1137,7 +1161,9 @@ const CalendarItem: FC<{
         <div
           className="absolute -top-[6px] -left-[6px] z-20 w-[18px] h-[18px] rounded-full bg-red-500 flex items-center justify-center text-white text-[11px] font-bold cursor-pointer"
           data-tooltip-id="tooltip"
-          data-tooltip-content={post.error || 'An error occurred while publishing this post'}
+          data-tooltip-content={
+            post.error || 'An error occurred while publishing this post'
+          }
         >
           !
         </div>
@@ -1152,105 +1178,59 @@ const CalendarItem: FC<{
       )}
       <div
         className={clsx(
-          'text-white text-[11px] max-h-[24px] h-[24px] min-h-[24px] w-full rounded-tr-[10px] rounded-tl-[10px] flex items-center justify-center gap-[10px] px-[5px] bg-btnPrimary'
+          'relative min-h-[34px] w-full rounded-t-[10px] border border-b-0 border-newTextColor/5',
+          'flex items-center gap-[6px] bg-newSettings/75 px-[7px] text-[10px] text-textColor/70'
         )}
-        style={{
-          backgroundColor: post?.tags?.[0]?.tag?.color,
-        }}
       >
-        <div
-          className={clsx(
-            post?.tags?.[0]?.tag?.color ? 'mix-blend-difference' : '',
-            'group-hover:hidden cursor-pointer'
-          )}
-        >
-          {post.tags.map((p) => p.tag.name).join(', ')}
-        </div>
-        {copyDebugJson && (
-          <div
-            className={clsx(
-              'hidden group-hover:block hover:underline cursor-pointer',
-              post?.tags?.[0]?.tag?.color && 'mix-blend-difference'
-            )}
-            onClick={copyDebugJson}
-          >
-            <CopyDebug />
-          </div>
+        <SafeImage
+          src={`/icons/platforms/${post.integration?.providerIdentifier}.png`}
+          className="h-[18px] w-[18px] shrink-0 rounded-[5px] object-cover"
+          alt={post.integration?.providerIdentifier || 'Platform'}
+          width={18}
+          height={18}
+        />
+        <SafeImage
+          src={post.integration.picture || '/no-picture.jpg'}
+          className="h-[18px] w-[18px] shrink-0 rounded-[5px] object-cover"
+          alt={post.integration.name || 'Account'}
+          width={18}
+          height={18}
+        />
+        {post?.tags?.[0]?.tag?.color && (
+          <span
+            className="h-[6px] w-[6px] shrink-0 rounded-full"
+            style={{ backgroundColor: post.tags[0].tag.color }}
+          />
         )}
-        <div
-          className={clsx(
-            'hidden group-hover:block hover:underline cursor-pointer',
-            post?.tags?.[0]?.tag?.color && 'mix-blend-difference'
-          )}
-          onClick={duplicatePost}
-        >
-          <Duplicate />
+        <div className="min-w-0 flex-1 truncate">
+          {post.tags.map((p) => p.tag.name).join(', ') ||
+            post.integration.name ||
+            t('untagged_post', 'Post')}
         </div>
-        <div
-          className={clsx(
-            'hidden group-hover:block hover:underline cursor-pointer',
-            post?.tags?.[0]?.tag?.color && 'mix-blend-difference'
-          )}
-          onClick={preview}
-        >
-          <Preview />
-        </div>{' '}
-        {((post.integration.providerIdentifier === 'x' && disableXAnalytics) || !post.releaseId) ? (
-          <></>
-        ) : post.releaseId === 'missing' && missingRelease ? (
-          <div
-            className={clsx(
-              'hidden group-hover:block hover:underline cursor-pointer',
-              post?.tags?.[0]?.tag?.color && 'mix-blend-difference'
-            )}
-            onClick={missingRelease}
-          >
-            <Statistics />
-          </div>
-        ) : post.releaseId !== 'missing' ? (
-          <div
-            className={clsx(
-              'hidden group-hover:block hover:underline cursor-pointer',
-              post?.tags?.[0]?.tag?.color && 'mix-blend-difference'
-            )}
-            onClick={statistics}
-          >
-            <Statistics />
-          </div>
-        ) : (
-          <></>
-        )}{' '}
-        <div
-          className={clsx(
-            'hidden group-hover:block hover:underline cursor-pointer',
-            post?.tags?.[0]?.tag?.color && 'mix-blend-difference'
-          )}
-          onClick={deletePost}
-        >
-          <DeletePost />
-        </div>
+        <CalendarItemActions
+          copyDebugJson={copyDebugJson}
+          duplicatePost={duplicatePost}
+          preview={preview}
+          statistics={
+            (post.integration.providerIdentifier === 'x' &&
+              disableXAnalytics) ||
+            !post.releaseId
+              ? undefined
+              : post.releaseId === 'missing'
+              ? missingRelease
+              : statistics
+          }
+          deletePost={deletePost}
+        />
       </div>
       <div
         onClick={editPost}
         className={clsx(
-          'gap-[6px] w-full flex h-full flex-1 rounded-br-[10px] rounded-bl-[10px] bg-newColColor',
-          display === 'month'
-            ? 'min-h-[118px] p-[7px] text-[11px]'
-            : 'p-[8px] text-[14px]',
-          'relative',
+          'relative flex min-h-[118px] w-full flex-1 rounded-b-[10px] border border-t-0 border-newTextColor/5',
+          'bg-newColColor p-[7px] text-[11px]',
           isBeforeNow && '!grayscale'
         )}
       >
-        <div className={clsx('relative min-w-[20px]')}>
-          <img
-            className="w-[20px] h-[20px] rounded-[8px]"
-            src={post.integration.picture! || '/no-picture.jpg'}
-          />
-          <img
-            className="w-[12px] h-[12px] rounded-[8px] absolute z-10 top-[10px] end-0 border border-fifth"
-            src={`/icons/platforms/${post.integration?.providerIdentifier}.png`}
-          />
-        </div>
         <div className="w-full min-w-0 flex-1 flex flex-col gap-[5px]">
           <div className="flex items-center justify-between gap-[6px] text-start text-[10px] text-textColor/55">
             <span>
@@ -1261,7 +1241,7 @@ const CalendarItem: FC<{
                     .format(isUSCitizen() ? 'hh:mm A' : 'HH:mm')}
             </span>
           </div>
-          {display === 'month' && firstMedia?.path && (
+          {firstMedia?.path && (
             <div className="h-[82px] w-full overflow-hidden rounded-[7px] border border-newTextColor/5 bg-newSettings">
               <VideoOrImage
                 src={mediaDirectory.set(firstMedia.path)}
@@ -1274,9 +1254,7 @@ const CalendarItem: FC<{
           <div
             className={clsx(
               'w-full break-words text-start leading-[1.45]',
-              display === 'month'
-                ? !contentExpanded && 'line-clamp-4'
-                : 'line-clamp-1'
+              !contentExpanded && 'line-clamp-4'
             )}
           >
             {content}
@@ -1295,21 +1273,142 @@ const CalendarItem: FC<{
                 : t('show_more', 'Show more')}
             </button>
           )}
-          {display === 'month' && firstMedia && (
-            <div className="text-start text-[9px] text-textColor/40">
-              {firstMedia.name || t('media_preview', 'Media preview')}
-            </div>
-          )}
         </div>
         {showTime && (
           <div className="text-textColor/50 text-[12px] whitespace-nowrap flex items-center">
-            {newDayjs(post.publishDate).local().format(isUSCitizen() ? 'hh:mm A' : 'HH:mm')}
+            {newDayjs(post.publishDate)
+              .local()
+              .format(isUSCitizen() ? 'hh:mm A' : 'HH:mm')}
           </div>
         )}
       </div>
     </div>
   );
 });
+
+const CalendarItemActions: FC<{
+  copyDebugJson?: () => void;
+  duplicatePost: () => void;
+  preview: () => void;
+  statistics?: () => void;
+  deletePost: () => void;
+}> = ({ copyDebugJson, duplicatePost, preview, statistics, deletePost }) => {
+  const t = useT();
+  const [open, setOpen] = useState(false);
+  const ref = useClickOutside(() => setOpen(false));
+  const runAction = useCallback(
+    (action: () => void) => (event: React.MouseEvent) => {
+      event.stopPropagation();
+      setOpen(false);
+      action();
+    },
+    []
+  );
+
+  return (
+    <div ref={ref} className="relative ms-auto shrink-0">
+      <button
+        type="button"
+        aria-label={t('post_actions', 'Post actions')}
+        aria-expanded={open}
+        onMouseDown={(event) => event.stopPropagation()}
+        onClick={(event) => {
+          event.stopPropagation();
+          setOpen((current) => !current);
+        }}
+        className={clsx(
+          'flex h-[24px] w-[24px] items-center justify-center rounded-[6px]',
+          'text-textColor/55 transition-colors hover:bg-newColColor hover:text-textColor'
+        )}
+      >
+        <MoreIcon />
+      </button>
+      {open && (
+        <div
+          role="menu"
+          className={clsx(
+            'absolute end-0 top-[calc(100%+4px)] z-[100] min-w-[152px] overflow-hidden',
+            'rounded-[8px] border border-newTextColor/10 bg-newSettings p-[4px] text-[11px]',
+            'text-textColor shadow-[0_12px_32px_rgba(0,0,0,0.22)]'
+          )}
+          onClick={(event) => event.stopPropagation()}
+        >
+          {copyDebugJson && (
+            <CalendarAction
+              icon={<CopyDebug />}
+              label={t('copy_debug_json', 'Copy Debug JSON')}
+              onClick={runAction(copyDebugJson)}
+            />
+          )}
+          <CalendarAction
+            icon={<Duplicate />}
+            label={t('duplicate_post', 'Duplicate Post')}
+            onClick={runAction(duplicatePost)}
+          />
+          <CalendarAction
+            icon={<Preview />}
+            label={t('preview_post', 'Preview Post')}
+            onClick={runAction(preview)}
+          />
+          {statistics && (
+            <CalendarAction
+              icon={<Statistics />}
+              label={t('post_statistics', 'Post Statistics')}
+              onClick={runAction(statistics)}
+            />
+          )}
+          <div className="my-[3px] h-px bg-newTextColor/10" />
+          <CalendarAction
+            destructive
+            icon={<DeletePost />}
+            label={t('delete_post', 'Delete Post')}
+            onClick={runAction(deletePost)}
+          />
+        </div>
+      )}
+    </div>
+  );
+};
+
+const CalendarAction: FC<{
+  icon: React.ReactNode;
+  label: string;
+  destructive?: boolean;
+  onClick: (event: React.MouseEvent<HTMLButtonElement>) => void;
+}> = ({ icon, label, destructive, onClick }) => (
+  <button
+    type="button"
+    role="menuitem"
+    onClick={onClick}
+    className={clsx(
+      'flex w-full items-center gap-[9px] rounded-[6px] px-[8px] py-[7px] text-start',
+      destructive
+        ? 'text-red-400 hover:bg-red-500/10'
+        : 'text-textColor/80 hover:bg-newColColor hover:text-textColor'
+    )}
+  >
+    <span className="flex h-[15px] w-[15px] items-center justify-center">
+      {icon}
+    </span>
+    <span>{label}</span>
+  </button>
+);
+
+const MoreIcon = () => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    width="16"
+    height="16"
+    viewBox="0 0 24 24"
+    fill="currentColor"
+    aria-hidden="true"
+  >
+    <circle cx="5" cy="12" r="1.75" />
+    <circle cx="12" cy="12" r="1.75" />
+    <circle cx="19" cy="12" r="1.75" />
+  </svg>
+);
+
 const DebugJsonModal: FC<{ post: any }> = ({ post }) => {
   const t = useT();
   const fetch = useFetch();
@@ -1318,10 +1417,7 @@ const DebugJsonModal: FC<{ post: any }> = ({ post }) => {
 
   const copyPostId = useCallback(() => {
     copy(post.id);
-    toaster.show(
-      t('post_id_copied', 'Post ID copied to clipboard'),
-      'success'
-    );
+    toaster.show(t('post_id_copied', 'Post ID copied to clipboard'), 'success');
     closeCurrent();
   }, [post, toaster, t, closeCurrent]);
 
