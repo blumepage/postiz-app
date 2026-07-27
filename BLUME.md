@@ -11,28 +11,16 @@ than copying a new Postiz release over this repository.
 
 ## Blume-owned surface
 
-The native `/content` view reads blog articles from Sanity through an
-authenticated Postiz backend route. It can:
+Sanity is a native publishing channel modeled on Postiz's WordPress provider.
+Connect it from **Add Channel** with a project ID, dataset, document type,
+dedicated write token, published blog base URL, and Studio URL. Posts scheduled
+to that channel create or replace a Sanity document when the Postiz job runs.
 
-- show published articles and draft overlays without exposing the Sanity token;
-- surface social opt-in, Postiz status, and automation errors;
-- open the document in Sanity Studio;
-- call Blume's Vercel social-scheduling route from Postiz.
-
-Configure the Postiz service with:
-
-```env
-SANITY_PROJECT_ID=rhfgd9vo
-SANITY_DATASET=production
-SANITY_API_READ_TOKEN=
-SANITY_STUDIO_URL=https://blume-blog.sanity.studio
-SANITY_SOCIAL_SCHEDULE_URL=https://blume.codes/api/blog/social/schedule
-SANITY_SOCIAL_SCHEDULE_SECRET=
-```
-
-`SANITY_API_READ_TOKEN` should be a read-only token. It is optional for a public
-dataset, but required to include draft overlays. The schedule secret must match
-`BLOG_SOCIAL_SECRET` in the Blume website's Vercel environment.
+The channel targets the Blume `blogPost` shape: title, slug, excerpt, author,
+Portable Text body, publish date, and an optional header image. A post can be
+sent to the published dataset or saved under Sanity's `drafts.` namespace.
+Credentials are encrypted in the same Postiz integration record used by the
+WordPress channel; no Sanity token is exposed to the frontend.
 
 Postiz itself is AGPL-3.0. Keep this fork public and retain upstream license and
 copyright notices when distributing or running modified builds.

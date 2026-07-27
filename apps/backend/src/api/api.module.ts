@@ -46,8 +46,6 @@ import { GoogleProvider } from '@gitroom/backend/services/auth/providers/google.
 import { FarcasterProvider } from '@gitroom/backend/services/auth/providers/farcaster.provider';
 import { WalletProvider } from '@gitroom/backend/services/auth/providers/wallet.provider';
 import { OauthProvider } from '@gitroom/backend/services/auth/providers/oauth.provider';
-import { SanityController } from '@gitroom/backend/api/routes/sanity.controller';
-import { SanityService } from '@gitroom/backend/services/sanity/sanity.service';
 
 const authenticatedController = [
   UsersController,
@@ -69,7 +67,6 @@ const authenticatedController = [
   OAuthAuthorizedController,
   AnnouncementsController,
   AdminController,
-  SanityController,
 ];
 @Module({
   imports: [UploadModule],
@@ -102,7 +99,6 @@ const authenticatedController = [
     FarcasterProvider,
     WalletProvider,
     OauthProvider,
-    SanityService,
   ],
   get exports() {
     return [...this.imports, ...this.providers];
