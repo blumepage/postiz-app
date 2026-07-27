@@ -211,6 +211,14 @@ export class IntegrationsController {
     const integrationProvider =
       this._integrationManager.getSocialIntegration(integration);
 
+    if (!this._integrationManager.isIntegrationConfigured(integration)) {
+      return {
+        err: true,
+        message:
+          'This channel needs OAuth credentials configured by an administrator.',
+      };
+    }
+
     if (integrationProvider.externalUrl && !externalUrl) {
       throw new Error('Missing external url');
     }

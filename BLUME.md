@@ -29,5 +29,12 @@ cards with expandable copy. The channels rail defaults to its collapsed state.
 Keep these changes localized to the launches calendar components when
 resolving upstream updates.
 
+Self-hosted OAuth channels require Blume-owned developer applications. Postiz
+marks providers without their required Railway variables as **Admin setup
+required** and will not generate an invalid external authorization URL. For
+LinkedIn, configure `LINKEDIN_CLIENT_ID` and `LINKEDIN_CLIENT_SECRET`, with
+redirect URLs ending in `/integrations/social/linkedin` and
+`/integrations/social/linkedin-page`.
+
 Postiz itself is AGPL-3.0. Keep this fork public and retain upstream license and
 copyright notices when distributing or running modified builds.

@@ -383,6 +383,7 @@ export const AddProviderComponent: FC<{
     toolTip?: string;
     isExternal: boolean;
     isWeb3: boolean;
+    configured: boolean;
     isChromeExtension?: boolean;
     extensionCookies?: Array<{
       name: string;
@@ -478,17 +479,18 @@ export const AddProviderComponent: FC<{
           ]
             .filter(Boolean)
             .join('&');
-          const { url, err } = await (
+          const { url, err, message } = await (
             await fetch(
               `/integrations/social/${identifier}${params ? `?${params}` : ''}`
             )
           ).json();
           if (err) {
             toaster.show(
-              t(
-                'could_not_connect_to_platform',
-                'Could not connect to the platform'
-              ),
+              message ||
+                t(
+                  'could_not_connect_to_platform',
+                  'Could not connect to the platform'
+                ),
               'warning'
             );
             return;
@@ -696,25 +698,37 @@ export const AddProviderComponent: FC<{
             .map((item) => (
               <div
                 key={item.identifier}
-                onClick={getSocialLink(
-                  props.invite,
-                  item.identifier,
-                  item.isExternal,
-                  item.isWeb3,
-                  item.isChromeExtension,
-                  item.customFields
-                )}
-                {...(!!item.toolTip
+                onClick={
+                  item.configured
+                    ? getSocialLink(
+                        props.invite,
+                        item.identifier,
+                        item.isExternal,
+                        item.isWeb3,
+                        item.isChromeExtension,
+                        item.customFields
+                      )
+                    : undefined
+                }
+                {...(!item.configured || !!item.toolTip
                   ? {
                       'data-tooltip-id': 'tooltip',
-                      'data-tooltip-content': item.toolTip,
+                      'data-tooltip-content': item.configured
+                        ? item.toolTip
+                        : t(
+                            'channel_requires_admin_configuration',
+                            'OAuth credentials must be configured by an administrator'
+                          ),
                     }
                   : {})}
                 className={clsx(
                   isMobile
                     ? 'flex-row h-[72px] p-[16px]'
                     : 'flex-col p-[10px] h-[100px] justify-center',
-                  'w-full text-[14px] rounded-[8px] bg-newTableHeader text-textColor relative items-center flex gap-[10px] cursor-pointer'
+                  'w-full text-[14px] rounded-[8px] bg-newTableHeader text-textColor relative items-center flex gap-[10px]',
+                  item.configured
+                    ? 'cursor-pointer'
+                    : 'cursor-not-allowed opacity-40'
                 )}
               >
                 <div>
@@ -738,6 +752,11 @@ export const AddProviderComponent: FC<{
                   )}
                 >
                   {item.name}
+                  {!item.configured && (
+                    <div className="mt-[2px] text-[9px] text-textColor/60">
+                      {t('admin_setup_required', 'Admin setup required')}
+                    </div>
+                  )}
                   {!!item.toolTip && !isMobile && (
                     <svg
                       width="15"

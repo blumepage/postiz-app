@@ -38,6 +38,7 @@ import { SkoolProvider } from '@gitroom/nestjs-libraries/integrations/social/sko
 import { WhopProvider } from '@gitroom/nestjs-libraries/integrations/social/whop.provider';
 import { MeweProvider } from '@gitroom/nestjs-libraries/integrations/social/mewe.provider';
 import { TumblrProvider } from '@gitroom/nestjs-libraries/integrations/social/tumblr.provider';
+import { isIntegrationConfigured } from '@gitroom/nestjs-libraries/integrations/integration.configuration';
 
 export const socialIntegrationList: Array<SocialAbstract & SocialProvider> = [
   new XProvider(),
@@ -91,6 +92,7 @@ export class IntegrationManager {
           isExternal: !!p.externalUrl,
           isWeb3: !!p.isWeb3,
           isChromeExtension: !!p.isChromeExtension,
+          configured: isIntegrationConfigured(p.identifier),
           ...(p.extensionCookies
             ? { extensionCookies: p.extensionCookies }
             : {}),
@@ -172,6 +174,9 @@ export class IntegrationManager {
 
   getAllowedSocialsIntegrations() {
     return socialIntegrationList.map((p) => p.identifier);
+  }
+  isIntegrationConfigured(integration: string) {
+    return isIntegrationConfigured(integration);
   }
   getSocialIntegration(integration: string): SocialProvider {
     return socialIntegrationList.find((i) => i.identifier === integration)!;
