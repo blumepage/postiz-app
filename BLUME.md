@@ -29,12 +29,43 @@ cards with expandable copy. The channels rail defaults to its collapsed state.
 Keep these changes localized to the launches calendar components when
 resolving upstream updates.
 
-Self-hosted OAuth channels require Blume-owned developer applications. Postiz
-marks providers without their required Railway variables as **Admin setup
-required** and will not generate an invalid external authorization URL. For
-LinkedIn, configure `LINKEDIN_CLIENT_ID` and `LINKEDIN_CLIENT_SECRET`, with
-redirect URLs ending in `/integrations/social/linkedin` and
-`/integrations/social/linkedin-page`.
+## Hybrid Postiz Cloud mode
+
+Production uses the self-hosted fork for authentication, the customized UI,
+and the Sanity channel, but uses Postiz Cloud as the source of truth and
+publishing engine for supported social channels. This lets social connections
+use Postiz's managed OAuth applications without copying or exposing Postiz's
+provider secrets.
+
+Set `POSTIZ_CLOUD_API_KEY` on the Railway service to enable hybrid mode.
+`POSTIZ_CLOUD_API_URL` is optional and defaults to
+`https://api.postiz.com/public/v1`. Keep the API key server-side; it must never
+be a `NEXT_PUBLIC_` variable or committed to the repository.
+
+In hybrid mode:
+
+- `/integrations/list` combines Postiz Cloud channels with locally connected
+  Sanity channels.
+- OAuth channel buttons request a supported Postiz Cloud authorization URL.
+  The provider flow opens in a separate window because its callback belongs to
+  Postiz Cloud.
+- Social post reads, scheduling, deletion, status changes, rescheduling, and
+  provider-specific tool calls go through Postiz's public API.
+- Sanity scheduling and publishing continue through the local Postiz database
+  and worker.
+- Composer uploads are forwarded to Postiz Cloud before being saved in the
+  local media library, ensuring social networks can access the media.
+- Redis keeps non-authoritative editing metadata for Cloud posts created from
+  this UI. This preserves media previews and multi-part editor content because
+  the Cloud calendar API intentionally returns a compact post representation.
+
+When hybrid mode is disabled, the fork falls back to normal self-hosted Postiz
+behavior. OAuth providers without their own environment variables are marked
+**Admin setup required**.
+
+Postiz Cloud's public API is the integration boundary. Do not call its private
+dashboard endpoints: keeping the adapter on the public API is what makes
+upstream Postiz updates and Cloud changes independently maintainable.
 
 Postiz itself is AGPL-3.0. Keep this fork public and retain upstream license and
 copyright notices when distributing or running modified builds.

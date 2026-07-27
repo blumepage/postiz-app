@@ -29,6 +29,11 @@ import {
   Sections,
 } from '@gitroom/backend/services/auth/permissions/permission.exception.class';
 import { PostValidationException } from '@gitroom/backend/api/routes/posts.validation.exception';
+import { PostizCloudService } from '@gitroom/nestjs-libraries/integrations/postiz.cloud.service';
+import {
+  minifyPosts,
+  minifyPostsList,
+} from '@gitroom/helpers/utils/posts.list.minify';
 
 @ApiTags('Posts')
 @Controller('/posts')
@@ -36,8 +41,42 @@ export class PostsController {
   constructor(
     private _postsService: PostsService,
     private _agentGraphService: AgentGraphService,
-    private _shortLinkService: ShortLinkService
+    private _shortLinkService: ShortLinkService,
+    private _postizCloudService: PostizCloudService
   ) {}
+
+  private assertValidPosts(validation: any[], type: string) {
+    const fail = (item: any, error: string) => {
+      throw new PostValidationException({
+        provider: item.identifier,
+        name: item.name,
+        error,
+      });
+    };
+
+    for (const item of validation) {
+      if (item.emptyContent) {
+        fail(
+          item,
+          'Your post should have at least one character or one image.'
+        );
+      }
+    }
+
+    if (type !== 'draft') {
+      for (const item of validation) {
+        if (!item.valid) {
+          fail(item, item.settingsError || 'Please fix your settings');
+        }
+        if (item.errors !== true) {
+          fail(item, item.errors as string);
+        }
+        if (item.tooLong) {
+          fail(item, 'post is too long, please fix it');
+        }
+      }
+    }
+  }
 
   @Get('/:id/statistics')
   async getStatistics(
@@ -114,11 +153,32 @@ export class PostsController {
     @GetOrgFromRequest() org: Organization,
     @Query() query: GetPostsDto
   ) {
-    return this._postsService.getPostsMinified(org.id, query);
+    const [localPosts, cloudPosts] = await Promise.all([
+      this._postsService.getPosts(org.id, query),
+      this._postizCloudService.getPosts(org.id, query),
+    ]);
+    return minifyPosts({
+      posts: [
+        ...localPosts.filter(
+          (post) =>
+            !this._postizCloudService.enabled ||
+            post.integration.providerIdentifier === 'sanity'
+        ),
+        ...cloudPosts,
+      ],
+    });
   }
 
   @Get('/find-slot')
   async findSlot(@GetOrgFromRequest() org: Organization) {
+    if (this._postizCloudService.enabled) {
+      const integration = (
+        await this._postizCloudService.listIntegrations()
+      ).find((item) => !item.disabled);
+      if (integration) {
+        return this._postizCloudService.findSlot(integration.id);
+      }
+    }
     return { date: await this._postsService.findFreeDateTime(org.id) };
   }
 
@@ -127,6 +187,13 @@ export class PostsController {
     @GetOrgFromRequest() org: Organization,
     @Param('id') id?: string
   ) {
+    if (
+      id &&
+      this._postizCloudService.enabled &&
+      (await this._postizCloudService.hasIntegration(id))
+    ) {
+      return this._postizCloudService.findSlot(id);
+    }
     return { date: await this._postsService.findFreeDateTime(org.id, id) };
   }
 
@@ -135,7 +202,51 @@ export class PostsController {
     @GetOrgFromRequest() org: Organization,
     @Query() query: GetPostsListDto
   ) {
-    return this._postsService.getPostsList(org.id, query);
+    if (!this._postizCloudService.enabled) {
+      return this._postsService.getPostsList(org.id, query);
+    }
+
+    const [localPosts, cloudPosts] = await Promise.all([
+      this._postsService.getPosts(org.id, {
+        startDate: '2010-01-01T00:00:00.000Z',
+        endDate: '2100-01-01T00:00:00.000Z',
+        customer: query.customer || '',
+      }),
+      this._postizCloudService.getAllPosts(org.id),
+    ]);
+    const stateMap: Record<string, string> = {
+      scheduled: 'QUEUE',
+      draft: 'DRAFT',
+      published: 'PUBLISHED',
+    };
+    const allPosts = [
+      ...localPosts.filter(
+        (post) => post.integration.providerIdentifier === 'sanity'
+      ),
+      ...cloudPosts,
+    ]
+      .filter(
+        (post) =>
+          !query.state ||
+          query.state === 'all' ||
+          post.state === stateMap[query.state]
+      )
+      .sort(
+        (a, b) =>
+          new Date(b.publishDate as any).getTime() -
+          new Date(a.publishDate as any).getTime()
+      );
+    const page = query.page || 0;
+    const limit = query.limit || 20;
+    const posts = allPosts.slice(page * limit, (page + 1) * limit);
+
+    return minifyPostsList({
+      posts,
+      total: allPosts.length,
+      page,
+      limit,
+      hasMore: (page + 1) * limit < allPosts.length,
+    });
   }
 
   @Get('/old')
@@ -159,12 +270,29 @@ export class PostsController {
   }
 
   @Get('/group/:group')
-  getPostsByGroup(@GetOrgFromRequest() org: Organization, @Param('group') group: string) {
+  async getPostsByGroup(
+    @GetOrgFromRequest() org: Organization,
+    @Param('group') group: string
+  ) {
+    const cloudPost = await this._postizCloudService.getPostGroup(
+      org.id,
+      group
+    );
+    if (cloudPost) {
+      return cloudPost;
+    }
     return this._postsService.getPostsByGroup(org.id, group);
   }
 
   @Get('/:id')
-  getPost(@GetOrgFromRequest() org: Organization, @Param('id') id: string) {
+  async getPost(
+    @GetOrgFromRequest() org: Organization,
+    @Param('id') id: string
+  ) {
+    const cloudPost = await this._postizCloudService.getPostById(org.id, id);
+    if (cloudPost) {
+      return cloudPost;
+    }
     return this._postsService.getPost(org.id, id);
   }
 
@@ -173,7 +301,37 @@ export class PostsController {
     @GetOrgFromRequest() org: Organization,
     @Body() rawBody: any
   ) {
-    return this._postsService.validatePosts(org.id, rawBody?.posts || []);
+    const cloudIntegrations = await this._postizCloudService.listIntegrations();
+    const cloudIntegrationMap = new Map(
+      cloudIntegrations.map((integration) => [integration.id, integration])
+    );
+    const rawPosts = rawBody?.posts || [];
+    const localPosts = rawPosts.filter(
+      (post: any) => !cloudIntegrationMap.has(post?.integration?.id)
+    );
+    const cloudPosts = rawPosts.filter((post: any) =>
+      cloudIntegrationMap.has(post?.integration?.id)
+    );
+    const localValidation = localPosts.length
+      ? await this._postsService.validatePosts(org.id, localPosts)
+      : [];
+    const cloudValidation = cloudPosts.map((post: any) => {
+      const integration = cloudIntegrationMap.get(post.integration.id)!;
+      const values = post.value || [];
+      const emptyContent = values.every(
+        (value: any) =>
+          !String(value?.content || '').trim() && !value?.image?.length
+      );
+      return {
+        identifier: integration.identifier,
+        name: integration.name,
+        emptyContent,
+        valid: true,
+        errors: true,
+        tooLong: false,
+      };
+    });
+    return [...localValidation, ...cloudValidation];
   }
 
   @Post('/')
@@ -182,45 +340,58 @@ export class PostsController {
     @GetOrgFromRequest() org: Organization,
     @Body() rawBody: any
   ) {
-    // Server-side validation — never trust the client to have validated.
-    const validation = await this._postsService.validatePosts(
-      org.id,
-      rawBody?.posts || []
+    const cloudIntegrations = await this._postizCloudService.listIntegrations();
+    const cloudIds = new Set(
+      cloudIntegrations.map((integration) => integration.id)
     );
+    const cloudPosts = (rawBody?.posts || []).filter((post: any) =>
+      cloudIds.has(post?.integration?.id)
+    );
+    const localPosts = (rawBody?.posts || []).filter(
+      (post: any) => !cloudIds.has(post?.integration?.id)
+    );
+    const validation = localPosts.length
+      ? await this._postsService.validatePosts(org.id, localPosts)
+      : [];
+    this.assertValidPosts(validation, rawBody?.type);
 
-    const fail = (item: (typeof validation)[number], error: string) => {
-      throw new PostValidationException({
-        provider: item.identifier,
-        name: item.name,
-        error,
-      });
-    };
-
-    for (const item of validation) {
-      if (item.emptyContent) {
-        fail(
-          item,
-          'Your post should have at least one character or one image.'
-        );
+    const output: any[] = [];
+    if (cloudPosts.length) {
+      const groups = Array.from(
+        new Set<string>(
+          cloudPosts
+            .map((post: any) => post?.group)
+            .filter((group: any): group is string => Boolean(group))
+        )
+      );
+      for (const group of groups) {
+        await this._postizCloudService.deletePostGroup(org.id, group);
       }
+      output.push(
+        ...(await this._postizCloudService.createPosts(org.id, {
+          ...rawBody,
+          posts: cloudPosts,
+        }))
+      );
     }
 
-    if (rawBody?.type !== 'draft') {
-      for (const item of validation) {
-        if (!item.valid) {
-          fail(item, item.settingsError || 'Please fix your settings');
-        }
-        if (item.errors !== true) {
-          fail(item, item.errors as string);
-        }
-        if (item.tooLong) {
-          fail(item, 'post is too long, please fix it');
-        }
-      }
+    if (!localPosts.length) {
+      return output;
     }
 
-    const body = await this._postsService.mapTypeToPost(rawBody, org.id);
-    return this._postsService.createPost(org.id, body, 'WEB');
+    const body = await this._postsService.mapTypeToPost(
+      { ...rawBody, posts: localPosts },
+      org.id
+    );
+    const localOutput = await this._postsService.createPost(
+      org.id,
+      body,
+      'WEB'
+    );
+    return [
+      ...output,
+      ...(Array.isArray(localOutput) ? localOutput : [localOutput]),
+    ];
   }
 
   @Post('/generator/draft')
@@ -261,20 +432,49 @@ export class PostsController {
   }
 
   @Delete('/:group')
-  deletePost(
+  async deletePost(
     @GetOrgFromRequest() org: Organization,
     @Param('group') group: string
   ) {
+    const cloudPost = await this._postizCloudService.getPostGroup(
+      org.id,
+      group
+    );
+    if (cloudPost) {
+      return this._postizCloudService.deletePostGroup(org.id, group);
+    }
     return this._postsService.deletePost(org.id, group);
   }
 
+  @Put('/:id/status')
+  async changePostStatus(
+    @GetOrgFromRequest() org: Organization,
+    @Param('id') id: string,
+    @Body('status') status: 'draft' | 'schedule'
+  ) {
+    const cloudPost = await this._postizCloudService.getPostById(org.id, id);
+    if (cloudPost) {
+      return this._postizCloudService.changePostStatus(id, status);
+    }
+    return this._postsService.changePostStatus(org.id, id, status);
+  }
+
   @Put('/:id/date')
-  changeDate(
+  async changeDate(
     @GetOrgFromRequest() org: Organization,
     @Param('id') id: string,
     @Body('date') date: string,
     @Body('action') action: 'schedule' | 'update' = 'schedule'
   ) {
+    const cloudPost = await this._postizCloudService.getPostById(org.id, id);
+    if (cloudPost) {
+      await this._postizCloudService.reschedulePostGroup(
+        org.id,
+        cloudPost.group,
+        date
+      );
+      return { status: 'success' };
+    }
     return this._postsService.changeDate(org.id, id, date, action);
   }
 

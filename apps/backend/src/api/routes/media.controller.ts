@@ -25,6 +25,7 @@ import { UploadFactory } from '@gitroom/nestjs-libraries/upload/upload.factory';
 import { SaveMediaInformationDto } from '@gitroom/nestjs-libraries/dtos/media/save.media.information.dto';
 import { VideoDto } from '@gitroom/nestjs-libraries/dtos/videos/video.dto';
 import { VideoFunctionDto } from '@gitroom/nestjs-libraries/dtos/videos/video.function.dto';
+import { PostizCloudService } from '@gitroom/nestjs-libraries/integrations/postiz.cloud.service';
 
 @ApiTags('Media')
 @Controller('/media')
@@ -32,7 +33,8 @@ export class MediaController {
   private storage = UploadFactory.createStorage();
   constructor(
     private _mediaService: MediaService,
-    private _subscriptionService: SubscriptionService
+    private _subscriptionService: SubscriptionService,
+    private _postizCloudService: PostizCloudService
   ) {}
 
   @Delete('/:id')
@@ -92,6 +94,15 @@ export class MediaController {
     @UploadedFile() file: Express.Multer.File
   ) {
     const originalName = file?.originalname || '';
+    if (this._postizCloudService.enabled) {
+      const uploadedFile = await this._postizCloudService.upload(file);
+      return this._mediaService.saveFile(
+        org.id,
+        uploadedFile.name || uploadedFile.path.split('/').pop() || originalName,
+        uploadedFile.path,
+        uploadedFile.originalName || originalName
+      );
+    }
     const uploadedFile = await this.storage.uploadFile(file);
     return this._mediaService.saveFile(
       org.id,
@@ -136,6 +147,18 @@ export class MediaController {
     @Body('preventSave') preventSave: string = 'false'
   ) {
     const originalName = file.originalname;
+    if (this._postizCloudService.enabled) {
+      const uploadedFile = await this._postizCloudService.upload(file);
+      if (preventSave === 'true') {
+        return { path: uploadedFile.path };
+      }
+      return this._mediaService.saveFile(
+        org.id,
+        uploadedFile.name || uploadedFile.path.split('/').pop() || originalName,
+        uploadedFile.path,
+        uploadedFile.originalName || originalName
+      );
+    }
     const getFile = await this.storage.uploadFile(file);
 
     if (preventSave === 'true') {
@@ -193,10 +216,12 @@ export class MediaController {
   }
 
   @Post('/video/function')
-  videoFunction(
-    @Body() body: VideoFunctionDto
-  ) {
-    return this._mediaService.videoFunction(body.identifier, body.functionName, body.params);
+  videoFunction(@Body() body: VideoFunctionDto) {
+    return this._mediaService.videoFunction(
+      body.identifier,
+      body.functionName,
+      body.params
+    );
   }
 
   @Get('/generate-video/:type/allowed')

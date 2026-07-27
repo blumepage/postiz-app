@@ -181,6 +181,8 @@ export class PostsRepository {
         intervalInDays: true,
         group: true,
         creationMethod: true,
+        image: true,
+        settings: true,
         tags: {
           select: {
             tag: true,

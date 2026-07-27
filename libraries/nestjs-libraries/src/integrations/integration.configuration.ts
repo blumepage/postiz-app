@@ -29,10 +29,45 @@ const providerEnvironmentRequirements: Record<string, string[]> = {
   tumblr: ['TUMBLR_CLIENT_ID', 'TUMBLR_CLIENT_SECRET'],
 };
 
+const postizCloudOAuthProviders = new Set([
+  'x',
+  'linkedin',
+  'linkedin-page',
+  'reddit',
+  'instagram',
+  'instagram-standalone',
+  'facebook',
+  'threads',
+  'youtube',
+  'gmb',
+  'tiktok',
+  'pinterest',
+  'dribbble',
+  'discord',
+  'slack',
+  'kick',
+  'twitch',
+  'wrapcast',
+  'telegram',
+  'vk',
+  'whop',
+  'mewe',
+  'tumblr',
+]);
+
+export const isPostizCloudOAuthProvider = (identifier: string) =>
+  postizCloudOAuthProviders.has(identifier);
+
 export const isIntegrationConfigured = (
   identifier: string,
   environment: NodeJS.ProcessEnv = process.env
 ) => {
+  if (
+    environment.POSTIZ_CLOUD_API_KEY?.trim() &&
+    isPostizCloudOAuthProvider(identifier)
+  ) {
+    return true;
+  }
   const requiredVariables = providerEnvironmentRequirements[identifier] || [];
   return requiredVariables.every((variable) => !!environment[variable]?.trim());
 };

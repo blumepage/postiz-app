@@ -479,7 +479,7 @@ export const AddProviderComponent: FC<{
           ]
             .filter(Boolean)
             .join('&');
-          const { url, err, message } = await (
+          const { url, err, message, remote } = await (
             await fetch(
               `/integrations/social/${identifier}${params ? `?${params}` : ''}`
             )
@@ -503,6 +503,35 @@ export const AddProviderComponent: FC<{
             );
             modal.closeAll();
             copy(url);
+            return;
+          }
+
+          if (remote) {
+            const popup = window.open(
+              url,
+              '_blank',
+              'popup=yes,width=720,height=820'
+            );
+            if (!popup) {
+              window.location.href = url;
+              return;
+            }
+            popup.opener = null;
+            modal.closeAll();
+            toaster.show(
+              t(
+                'finish_cloud_channel_connection',
+                'Finish connecting in the Postiz Cloud window. Channels refresh when you close it.'
+              ),
+              'success'
+            );
+            const refreshWhenClosed = window.setInterval(() => {
+              if (!popup.closed) {
+                return;
+              }
+              window.clearInterval(refreshWhenClosed);
+              update?.();
+            }, 750);
             return;
           }
 
@@ -666,7 +695,7 @@ export const AddProviderComponent: FC<{
         }
         await gotoIntegration();
       },
-    [onboarding]
+    [onboarding, update]
   );
 
   const t = useT();

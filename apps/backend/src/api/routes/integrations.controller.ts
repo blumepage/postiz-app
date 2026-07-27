@@ -32,6 +32,7 @@ import {
 } from '@gitroom/backend/services/auth/permissions/permission.exception.class';
 import { uniqBy } from 'lodash';
 import { RefreshIntegrationService } from '@gitroom/nestjs-libraries/integrations/refresh.integration.service';
+import { PostizCloudService } from '@gitroom/nestjs-libraries/integrations/postiz.cloud.service';
 
 @ApiTags('Integrations')
 @Controller('/integrations')
@@ -40,7 +41,8 @@ export class IntegrationsController {
     private _integrationManager: IntegrationManager,
     private _integrationService: IntegrationService,
     private _postService: PostsService,
-    private _refreshIntegrationService: RefreshIntegrationService
+    private _refreshIntegrationService: RefreshIntegrationService,
+    private _postizCloudService: PostizCloudService
   ) {}
 
   @Post('/provider/:id/connect')
@@ -87,11 +89,35 @@ export class IntegrationsController {
 
   @Get('/list')
   async getIntegrationList(@GetOrgFromRequest() org: Organization) {
+    const localIntegrations =
+      await this._integrationService.getIntegrationsList(org.id);
+    const cloudIntegrations = await this._postizCloudService.listIntegrations();
+
     return {
       integrations: await Promise.all(
-        (
-          await this._integrationService.getIntegrationsList(org.id)
-        ).map(async (p) => {
+        [
+          ...localIntegrations.filter(
+            (integration) =>
+              !this._postizCloudService.enabled ||
+              integration.providerIdentifier === 'sanity'
+          ),
+          ...cloudIntegrations.map((integration) => ({
+            id: integration.id,
+            internalId: integration.id,
+            disabled: integration.disabled || false,
+            name: integration.name,
+            picture: integration.picture,
+            providerIdentifier: integration.identifier,
+            inBetweenSteps: false,
+            refreshNeeded: false,
+            profile: integration.profile,
+            type: 'social',
+            postingTimes: '[{"time":120},{"time":400},{"time":700}]',
+            customer: integration.customer,
+            additionalSettings: '[]',
+            remote: true,
+          })),
+        ].map(async (p: any) => {
           const findIntegration = this._integrationManager.getSocialIntegration(
             p.providerIdentifier
           );
@@ -113,10 +139,12 @@ export class IntegrationsController {
             display: p.profile,
             type: p.type,
             time: JSON.parse(p.postingTimes),
-            changeProfilePicture: !!findIntegration?.changeProfilePicture,
-            changeNickName: !!findIntegration?.changeNickname,
+            changeProfilePicture:
+              !p.remote && !!findIntegration?.changeProfilePicture,
+            changeNickName: !p.remote && !!findIntegration?.changeNickname,
             customer: p.customer,
             additionalSettings: p.additionalSettings || '[]',
+            remote: !!p.remote,
           };
         })
       ),
@@ -211,6 +239,27 @@ export class IntegrationsController {
     const integrationProvider =
       this._integrationManager.getSocialIntegration(integration);
 
+    if (
+      this._postizCloudService.enabled &&
+      this._postizCloudService.isOAuthProvider(integration) &&
+      !integrationProvider.externalUrl &&
+      !integrationProvider.customFields
+    ) {
+      try {
+        return {
+          ...(await this._postizCloudService.getAuthUrl(integration, refresh)),
+          remote: true,
+        };
+      } catch (err: any) {
+        return {
+          err: true,
+          message:
+            err?.message ||
+            'Could not connect this channel through Postiz Cloud.',
+        };
+      }
+    }
+
     if (!this._integrationManager.isIntegrationConfigured(integration)) {
       return {
         err: true,
@@ -275,6 +324,23 @@ export class IntegrationsController {
     @GetOrgFromRequest() org: Organization,
     @Body() body: IntegrationFunctionDto
   ) {
+    if (
+      this._postizCloudService.enabled &&
+      (await this._postizCloudService.hasIntegration(body.id))
+    ) {
+      try {
+        const response = await this._postizCloudService.triggerIntegration(
+          body.id,
+          body.name,
+          body.data || {}
+        );
+        return response.output || [];
+      } catch (err) {
+        console.log(err);
+        return [];
+      }
+    }
+
     const getIntegration = await this._integrationService.getIntegrationById(
       org.id,
       body.id
@@ -331,6 +397,18 @@ export class IntegrationsController {
     @GetOrgFromRequest() org: Organization,
     @Body() body: IntegrationFunctionDto
   ): Promise<any> {
+    if (
+      this._postizCloudService.enabled &&
+      (await this._postizCloudService.hasIntegration(body.id))
+    ) {
+      const response = await this._postizCloudService.triggerIntegration(
+        body.id,
+        body.name,
+        body.data || {}
+      );
+      return response.output;
+    }
+
     const getIntegration = await this._integrationService.getIntegrationById(
       org.id,
       body.id
@@ -412,6 +490,13 @@ export class IntegrationsController {
     @GetOrgFromRequest() org: Organization,
     @Body('id') id: string
   ) {
+    if (
+      this._postizCloudService.enabled &&
+      (await this._postizCloudService.hasIntegration(id))
+    ) {
+      return this._postizCloudService.deleteIntegration(id);
+    }
+
     const isTherePosts = await this._integrationService.getPostsForChannel(
       org.id,
       id
