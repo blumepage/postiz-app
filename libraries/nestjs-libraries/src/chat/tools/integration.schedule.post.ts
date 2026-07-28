@@ -125,16 +125,16 @@ If the tools return errors, you would need to rerun it with the right parameters
           )
           .describe('Individual post'),
       }),
-      outputSchema: z.object({
-        output: z
-          .array(
+      outputSchema: z
+        .object({
+          output: z.array(
             z.object({
               postId: z.string(),
               integration: z.string(),
             })
-          )
-          .or(z.object({ errors: z.string() })),
-      }),
+          ),
+        })
+        .or(z.object({ errors: z.string() })),
       execute: async (inputData, context) => {
         checkAuth(inputData, context);
         const organizationId = JSON.parse(
