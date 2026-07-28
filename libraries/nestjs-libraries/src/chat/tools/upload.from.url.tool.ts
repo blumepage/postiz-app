@@ -8,6 +8,7 @@ import { getMaxSize } from '@gitroom/nestjs-libraries/upload/custom.upload.valid
 import { checkAuth } from '@gitroom/nestjs-libraries/chat/auth.context';
 import { ssrfSafeDispatcher } from '@gitroom/nestjs-libraries/dtos/webhooks/ssrf.safe.dispatcher';
 import { Readable } from 'stream';
+import { PostizCloudService } from '@gitroom/nestjs-libraries/integrations/postiz.cloud.service';
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const { fromBuffer } = require('file-type');
 
@@ -27,7 +28,10 @@ const ALLOWED_MIME = new Set<string>([
 export class UploadFromUrlTool implements AgentToolInterface {
   private storage = UploadFactory.createStorage();
 
-  constructor(private _mediaService: MediaService) {}
+  constructor(
+    private _mediaService: MediaService,
+    private _postizCloudService: PostizCloudService
+  ) {}
   name = 'uploadFromUrlTool';
 
   run() {
@@ -102,7 +106,7 @@ so the attachment passes the upload-domain validation. Returns the hosted media 
             };
           }
 
-          const getFile = await this.storage.uploadFile({
+          const file = {
             buffer,
             mimetype: detected.mime,
             size: buffer.length,
@@ -113,7 +117,21 @@ so the attachment passes the upload-domain validation. Returns the hosted media 
             filename: '',
             originalname: `upload.${detected.ext}`,
             encoding: '',
-          });
+          } as Express.Multer.File;
+
+          if (this._postizCloudService.enabled) {
+            const uploadedFile = await this._postizCloudService.upload(file);
+            return this._mediaService.saveFile(
+              org.id,
+              uploadedFile.name ||
+                uploadedFile.path.split('/').pop() ||
+                file.originalname,
+              uploadedFile.path,
+              uploadedFile.originalName || file.originalname
+            );
+          }
+
+          const getFile = await this.storage.uploadFile(file);
 
           return await this._mediaService.saveFile(
             org.id,

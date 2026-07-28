@@ -9,6 +9,10 @@ import { AllProvidersSettings } from '@gitroom/nestjs-libraries/dtos/posts/provi
 import { Integration } from '@prisma/client';
 import { checkAuth } from '@gitroom/nestjs-libraries/chat/auth.context';
 import {
+  PostizCloudIntegration,
+  PostizCloudService,
+} from '@gitroom/nestjs-libraries/integrations/postiz.cloud.service';
+import {
   ValidUrlExtension,
   ValidUrlPath,
 } from '@gitroom/helpers/utils/valid.url.path';
@@ -31,7 +35,8 @@ const attachmentUrl = z
 export class IntegrationSchedulePostTool implements AgentToolInterface {
   constructor(
     private _postsService: PostsService,
-    private _integrationService: IntegrationService
+    private _integrationService: IntegrationService,
+    private _postizCloudService: PostizCloudService
   ) {}
   name = 'integrationSchedulePostTool';
 
@@ -137,13 +142,40 @@ If the tools return errors, you would need to rerun it with the right parameters
         ).id;
         const finalOutput = [];
 
+        const cloudIntegrationMap = new Map(
+          (await this._postizCloudService.listIntegrations()).map(
+            (integration) => [integration.id, integration]
+          )
+        );
         const integrations = {} as Record<string, Integration>;
+        const cloudIntegrations = {} as Record<string, PostizCloudIntegration>;
         for (const platform of inputData.socialPost) {
+          const cloudIntegration = cloudIntegrationMap.get(
+            platform.integrationId
+          );
+          if (cloudIntegration) {
+            cloudIntegrations[platform.integrationId] = cloudIntegration;
+            const emptyContent = platform.postsAndComments.every(
+              (post) => !post.content.trim() && !(post.attachments || []).length
+            );
+            if (emptyContent) {
+              return {
+                errors: `${cloudIntegration.name}: Your post should have at least one character or one image.`,
+              };
+            }
+            continue;
+          }
+
           integrations[platform.integrationId] =
             await this._integrationService.getIntegrationById(
               organizationId,
               platform.integrationId
             );
+          if (!integrations[platform.integrationId]) {
+            return {
+              errors: `Integration ${platform.integrationId} was not found.`,
+            };
+          }
 
           // Same server-side validation as the dashboard / public API
           // (settings DTO + media checkValidity + empty / too-long content).
@@ -201,42 +233,91 @@ If the tools return errors, you would need to rerun it with the right parameters
         }
 
         for (const post of inputData.socialPost) {
+          const cloudIntegration = cloudIntegrations[post.integrationId];
+          if (cloudIntegration) {
+            const output = await this._postizCloudService.createPosts(
+              organizationId,
+              {
+                date: post.date,
+                type: post.type,
+                shortLink: post.shortLink,
+                tags: [],
+                posts: [
+                  {
+                    integration: { id: post.integrationId },
+                    group: makeId(10),
+                    settings: post.settings.reduce(
+                      (
+                        acc: AllProvidersSettings,
+                        setting: { key: string; value: any }
+                      ) => ({
+                        ...acc,
+                        [setting.key]: setting.value,
+                      }),
+                      {
+                        __type: cloudIntegration.identifier,
+                      } as AllProvidersSettings
+                    ),
+                    value: post.postsAndComments.map((item) => ({
+                      content: item.content,
+                      id: makeId(10),
+                      delay: 0,
+                      image: item.attachments.map((path) => ({
+                        id: makeId(10),
+                        path,
+                      })),
+                    })),
+                  },
+                ],
+              }
+            );
+            finalOutput.push(...output);
+            continue;
+          }
+
           const integration = integrations[post.integrationId];
 
           if (!integration) {
             throw new Error('Integration not found');
           }
 
-          const output = await this._postsService.createPost(organizationId, {
-            date: post.date,
-            type: post.type as 'draft' | 'schedule' | 'now',
-            shortLink: post.shortLink,
-            tags: [],
-            posts: [
-              {
-                integration,
-                group: makeId(10),
-                settings: post.settings.reduce(
-                  (acc: AllProvidersSettings, s: { key: string; value: any }) => ({
-                    ...acc,
-                    [s.key]: s.value,
-                  }),
-                  {
-                    __type: integration.providerIdentifier,
-                  } as AllProvidersSettings
-                ),
-                value: post.postsAndComments.map((p: any) => ({
-                  content: p.content,
-                  id: makeId(10),
-                  delay: 0,
-                  image: p.attachments.map((p: any) => ({
+          const output = await this._postsService.createPost(
+            organizationId,
+            {
+              date: post.date,
+              type: post.type as 'draft' | 'schedule' | 'now',
+              shortLink: post.shortLink,
+              tags: [],
+              posts: [
+                {
+                  integration,
+                  group: makeId(10),
+                  settings: post.settings.reduce(
+                    (
+                      acc: AllProvidersSettings,
+                      s: { key: string; value: any }
+                    ) => ({
+                      ...acc,
+                      [s.key]: s.value,
+                    }),
+                    {
+                      __type: integration.providerIdentifier,
+                    } as AllProvidersSettings
+                  ),
+                  value: post.postsAndComments.map((p: any) => ({
+                    content: p.content,
                     id: makeId(10),
-                    path: p,
+                    delay: 0,
+                    image: p.attachments.map((p: any) => ({
+                      id: makeId(10),
+                      path: p,
+                    })),
                   })),
-                })),
-              },
-            ],
-          }, 'MCP');
+                },
+              ],
+            },
+            'MCP'
+          );
           finalOutput.push(...output);
         }
 

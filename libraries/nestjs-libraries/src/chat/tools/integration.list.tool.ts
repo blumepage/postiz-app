@@ -1,15 +1,17 @@
-import {
-  AgentToolInterface,
-} from '@gitroom/nestjs-libraries/chat/agent.tool.interface';
+import { AgentToolInterface } from '@gitroom/nestjs-libraries/chat/agent.tool.interface';
 import { createTool } from '@mastra/core/tools';
 import { Injectable } from '@nestjs/common';
 import { IntegrationService } from '@gitroom/nestjs-libraries/database/prisma/integrations/integration.service';
+import { PostizCloudService } from '@gitroom/nestjs-libraries/integrations/postiz.cloud.service';
 import z from 'zod';
 import { checkAuth } from '@gitroom/nestjs-libraries/chat/auth.context';
 
 @Injectable()
 export class IntegrationListTool implements AgentToolInterface {
-  constructor(private _integrationService: IntegrationService) {}
+  constructor(
+    private _integrationService: IntegrationService,
+    private _postizCloudService: PostizCloudService
+  ) {}
   name = 'integrationList';
 
   run() {
@@ -49,19 +51,39 @@ export class IntegrationListTool implements AgentToolInterface {
           (context?.requestContext as any)?.get('organization') as string
         ).id;
 
+        const [localIntegrations, cloudIntegrations] = await Promise.all([
+          this._integrationService.getIntegrationsList(organizationId),
+          this._postizCloudService.listIntegrations(),
+        ]);
+
         return {
-          output: (
-            await this._integrationService.getIntegrationsList(organizationId)
-          )
-            .filter((p) => !inputData.group || p.customer?.id === inputData.group)
+          output: [
+            ...localIntegrations
+              .filter(
+                (integration) =>
+                  !this._postizCloudService.enabled ||
+                  integration.providerIdentifier === 'sanity'
+              )
+              .map((integration) => ({
+                ...integration,
+                platform: integration.providerIdentifier,
+              })),
+            ...cloudIntegrations.map((integration) => ({
+              ...integration,
+              platform: integration.identifier,
+            })),
+          ]
+            .filter(
+              (p) => !inputData.group || p.customer?.id === inputData.group
+            )
             .map((p) => ({
               name: p.name,
               id: p.id,
               disabled: p.disabled,
               picture: p.picture || '/no-picture.jpg',
-              platform: p.providerIdentifier,
+              platform: p.platform,
               display: p.profile,
-              type: p.type,
+              type: 'type' in p ? p.type : 'social',
               customer: p.customer
                 ? {
                     id: p.customer.id,

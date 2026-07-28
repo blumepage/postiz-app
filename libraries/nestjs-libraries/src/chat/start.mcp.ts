@@ -17,6 +17,20 @@ const fixAcceptHeader = (req: Request) => {
   }
 };
 
+const getPublicMcpUrl = (path: string) => {
+  const base = process.env.MCP_URL || process.env.NEXT_PUBLIC_BACKEND_URL;
+  if (!base) {
+    throw new Error('MCP_URL or NEXT_PUBLIC_BACKEND_URL must be configured');
+  }
+
+  const url = new URL(base.endsWith('/') ? base : `${base}/`);
+  url.pathname = `${url.pathname.replace(/\/$/, '')}/${path.replace(
+    /^\//,
+    ''
+  )}`;
+  return url;
+};
+
 export const startMcp = async (app: INestApplication) => {
   const mastraService = app.get(MastraService, { strict: false });
   const organizationService = app.get(OrganizationService, { strict: false });
@@ -46,12 +60,16 @@ export const startMcp = async (app: INestApplication) => {
 
   const oauthMiddleware = createOAuthMiddleware({
     oauth: {
-      resource: new URL('/mcp-oauth', process.env.NEXT_PUBLIC_BACKEND_URL!).toString(),
+      resource: getPublicMcpUrl('/mcp-oauth').toString(),
       authorizationServers: [process.env.NEXT_PUBLIC_BACKEND_URL!],
       validateToken: async (token: string) => {
         const org = await resolveAuth(token);
         if (!org) {
-          return { valid: false, error: 'invalid_token', errorDescription: 'Invalid API Key or OAuth token' };
+          return {
+            valid: false,
+            error: 'invalid_token',
+            errorDescription: 'Invalid API Key or OAuth token',
+          };
         }
         return { valid: true, subject: token };
       },
@@ -60,72 +78,95 @@ export const startMcp = async (app: INestApplication) => {
   });
 
   if (process.env.OPENAI_APP_CHALLANGE) {
-    app.use('/.well-known/openai-apps-challenge', (req: Request, res: Response) => {
-      res.setHeader('Content-Type', 'text/plain');
-      res.send(process.env.OPENAI_APP_CHALLANGE);
-    });
+    app.use(
+      '/.well-known/openai-apps-challenge',
+      (req: Request, res: Response) => {
+        res.setHeader('Content-Type', 'text/plain');
+        res.send(process.env.OPENAI_APP_CHALLANGE);
+      }
+    );
   }
 
-  app.use('/.well-known/oauth-protected-resource', async (req: Request, res: Response) => {
-    const url = new URL('/.well-known/oauth-protected-resource', process.env.NEXT_PUBLIC_BACKEND_URL);
-    await oauthMiddleware(req, res, url);
-  });
-
-  app.use('/.well-known/oauth-authorization-server', async (req: Request, res: Response) => {
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    if (req.method === 'OPTIONS') {
-      res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-      res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-      res.writeHead(204);
-      res.end();
-      return;
+  app.use(
+    '/.well-known/oauth-protected-resource',
+    async (req: Request, res: Response) => {
+      const url = new URL(
+        '/.well-known/oauth-protected-resource',
+        process.env.NEXT_PUBLIC_BACKEND_URL
+      );
+      await oauthMiddleware(req, res, url);
     }
-    res.setHeader('Content-Type', 'application/json');
-    res.setHeader('Cache-Control', 'max-age=3600');
-    res.json({
-      issuer: process.env.NEXT_PUBLIC_BACKEND_URL,
-      authorization_endpoint: `${process.env.FRONTEND_URL}/oauth/authorize`,
-      token_endpoint: `${process.env.NEXT_PUBLIC_OVERRIDE_BACKEND_URL || process.env.NEXT_PUBLIC_BACKEND_URL}/oauth/token`,
-      response_types_supported: ['code'],
-      grant_types_supported: ['authorization_code'],
-      code_challenge_methods_supported: ['S256'],
-      scopes_supported: ['mcp:read', 'mcp:write'],
-    });
-  });
+  );
 
-  app.use('/mcp-oauth', async (req: Request, res: Response, next: () => void) => {
-    // Skip if this is the /mcp/:id route
-    if (req.path !== '/' && req.path !== '') {
-      next();
-      return;
-    }
-
-    const url = new URL('/mcp-oauth', process.env.NEXT_PUBLIC_BACKEND_URL);
-
-    const result = await oauthMiddleware(req, res, url);
-    if (!result.proceed) return;
-
-    const token = result.tokenValidation?.subject;
-    const auth = await resolveAuth(token!);
-    if (!auth) {
-      res.status(401).json({ error: 'invalid_token', error_description: 'Could not resolve organization' });
-      return;
-    }
-
-    fixAcceptHeader(req);
-    await runWithContext({ requestId: token!, auth }, async () => {
-      await server.startHTTP({
-        url: url,
-        httpPath: url.pathname,
-        options: {
-          serverless: true,
-          enableJsonResponse: true,
-        },
-        req,
-        res,
+  app.use(
+    '/.well-known/oauth-authorization-server',
+    async (req: Request, res: Response) => {
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      if (req.method === 'OPTIONS') {
+        res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+        res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+        res.writeHead(204);
+        res.end();
+        return;
+      }
+      res.setHeader('Content-Type', 'application/json');
+      res.setHeader('Cache-Control', 'max-age=3600');
+      res.json({
+        issuer: process.env.NEXT_PUBLIC_BACKEND_URL,
+        authorization_endpoint: `${process.env.FRONTEND_URL}/oauth/authorize`,
+        token_endpoint: `${
+          process.env.NEXT_PUBLIC_OVERRIDE_BACKEND_URL ||
+          process.env.NEXT_PUBLIC_BACKEND_URL
+        }/oauth/token`,
+        response_types_supported: ['code'],
+        grant_types_supported: ['authorization_code'],
+        code_challenge_methods_supported: ['S256'],
+        scopes_supported: ['mcp:read', 'mcp:write'],
       });
-    });
-  });
+    }
+  );
+
+  app.use(
+    '/mcp-oauth',
+    async (req: Request, res: Response, next: () => void) => {
+      // Skip if this is the /mcp/:id route
+      if (req.path !== '/' && req.path !== '') {
+        next();
+        return;
+      }
+
+      const url = getPublicMcpUrl('/mcp-oauth');
+
+      const result = await oauthMiddleware(req, res, url);
+      if (!result.proceed) return;
+
+      const token = result.tokenValidation?.subject;
+      const auth = await resolveAuth(token!);
+      if (!auth) {
+        res
+          .status(401)
+          .json({
+            error: 'invalid_token',
+            error_description: 'Could not resolve organization',
+          });
+        return;
+      }
+
+      fixAcceptHeader(req);
+      await runWithContext({ requestId: token!, auth }, async () => {
+        await server.startHTTP({
+          url: url,
+          httpPath: url.pathname,
+          options: {
+            serverless: true,
+            enableJsonResponse: true,
+          },
+          req,
+          res,
+        });
+      });
+    }
+  );
 
   app.use('/mcp', async (req: Request, res: Response, next: () => void) => {
     // Skip if this is the /mcp/:id route
@@ -159,7 +200,7 @@ export const startMcp = async (app: INestApplication) => {
       return;
     }
 
-    const url = new URL('/mcp', process.env.NEXT_PUBLIC_BACKEND_URL);
+    const url = getPublicMcpUrl('/mcp');
 
     fixAcceptHeader(req);
     // @ts-ignore
@@ -197,10 +238,7 @@ export const startMcp = async (app: INestApplication) => {
       return;
     }
 
-    const url = new URL(
-      `/mcp/${req.params.id}`,
-      process.env.NEXT_PUBLIC_BACKEND_URL
-    );
+    const url = getPublicMcpUrl(`/mcp/${req.params.id}`);
 
     fixAcceptHeader(req);
     await runWithContext(
@@ -241,7 +279,7 @@ export const startMcp = async (app: INestApplication) => {
       return;
     }
 
-    const url = new URL(req.originalUrl, process.env.NEXT_PUBLIC_BACKEND_URL);
+    const url = getPublicMcpUrl(req.originalUrl);
 
     await runWithContext(
       // @ts-ignore

@@ -11,13 +11,15 @@ import { RefreshToken } from '@gitroom/nestjs-libraries/integrations/social.abst
 import { timer } from '@gitroom/helpers/utils/timer';
 import { checkAuth } from '@gitroom/nestjs-libraries/chat/auth.context';
 import { RefreshIntegrationService } from '@gitroom/nestjs-libraries/integrations/refresh.integration.service';
+import { PostizCloudService } from '@gitroom/nestjs-libraries/integrations/postiz.cloud.service';
 
 @Injectable()
 export class IntegrationTriggerTool implements AgentToolInterface {
   constructor(
     private _integrationManager: IntegrationManager,
     private _integrationService: IntegrationService,
-    private _refreshIntegrationService: RefreshIntegrationService
+    private _refreshIntegrationService: RefreshIntegrationService,
+    private _postizCloudService: PostizCloudService
   ) {}
   name = 'triggerTool';
 
@@ -59,6 +61,27 @@ export class IntegrationTriggerTool implements AgentToolInterface {
           (context?.requestContext as any)?.get('organization') as string
         ).id;
 
+        if (
+          (await this._postizCloudService.listIntegrations()).some(
+            (integration) => integration.id === inputData.integrationId
+          )
+        ) {
+          return this._postizCloudService.triggerIntegration(
+            inputData.integrationId,
+            inputData.methodName,
+            inputData.dataSchema.reduce(
+              (
+                all: Record<string, string>,
+                current: { key: string; value: string }
+              ) => ({
+                ...all,
+                [current.key]: current.value,
+              }),
+              {}
+            )
+          );
+        }
+
         const getIntegration =
           await this._integrationService.getIntegrationById(
             organizationId,
@@ -99,7 +122,10 @@ export class IntegrationTriggerTool implements AgentToolInterface {
             const load = await integrationProvider[inputData.methodName](
               getIntegration.token,
               inputData.dataSchema.reduce(
-                (all: Record<string, string>, current: { key: string; value: string }) => ({
+                (
+                  all: Record<string, string>,
+                  current: { key: string; value: string }
+                ) => ({
                   ...all,
                   [current.key]: current.value,
                 }),
