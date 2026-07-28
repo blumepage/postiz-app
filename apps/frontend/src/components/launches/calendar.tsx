@@ -60,6 +60,8 @@ import { newDayjs } from '@gitroom/frontend/components/layout/set.timezone';
 import { Button } from '@gitroom/react/form/button';
 import { useMediaDirectory } from '@gitroom/react/helpers/use.media.directory';
 import { VideoOrImage } from '@gitroom/react/helpers/video.or.image';
+import { VideoFrame } from '@gitroom/react/helpers/video.frame';
+import { hasExtension } from '@gitroom/helpers/utils/has.extension';
 import { useClickOutside } from '@mantine/hooks';
 
 // Extend dayjs with necessary plugins
@@ -150,12 +152,17 @@ export const hours = Array.from(
 );
 
 // Shared hook for post actions (edit, delete, statistics)
-const usePostActions = (onMutate?: () => void) => {
+export const usePostActions = (
+  onMutate?: () => void,
+  integrationsOverride?: Integrations[]
+) => {
   const t = useT();
   const fetch = useFetch();
   const modal = useModals();
   const toaster = useToaster();
-  const { integrations, reloadCalendarView } = useCalendar();
+  const { integrations: calendarIntegrations, reloadCalendarView } =
+    useCalendar();
+  const integrations = integrationsOverride || calendarIntegrations;
 
   const mutate = useCallback(() => {
     reloadCalendarView();
@@ -1142,7 +1149,7 @@ export const CalendarColumn: FC<{
     </div>
   );
 });
-const CalendarItem: FC<{
+export const CalendarItem: FC<{
   date: dayjs.Dayjs;
   isBeforeNow: boolean;
   editPost: () => void;
@@ -1155,6 +1162,9 @@ const CalendarItem: FC<{
   state: State;
   showTime?: boolean;
   compact?: boolean;
+  dragType?: string;
+  dragItem?: Record<string, any>;
+  canDrag?: boolean;
   post: Post & {
     integration: Integration;
     tags: {
@@ -1176,6 +1186,9 @@ const CalendarItem: FC<{
     showTime,
     missingRelease,
     compact = false,
+    dragType = 'post',
+    dragItem,
+    canDrag = true,
   } = props;
   const { disableXAnalytics } = useVariables();
   const mediaDirectory = useMediaDirectory();
@@ -1207,6 +1220,7 @@ const CalendarItem: FC<{
       return undefined;
     }
   }, [post.image]);
+  const firstMediaIsVideo = hasExtension(firstMedia?.path, 'mp4');
   useEffect(() => {
     setContentExpanded(false);
   }, [content]);
@@ -1230,17 +1244,20 @@ const CalendarItem: FC<{
   const canExpandContent = contentOverflows || contentExpanded;
   const [{ opacity }, dragRef] = useDrag(
     () => ({
-      type: 'post',
-      item: {
-        id: post.id,
-        interval: !!post.intervalInDays,
-        date,
-      },
+      type: dragType,
+      item:
+        dragItem ||
+        ({
+          id: post.id,
+          interval: !!post.intervalInDays,
+          date,
+        } as Record<string, any>),
+      canDrag,
       collect: (monitor) => ({
         opacity: monitor.isDragging() ? 0 : 1,
       }),
     }),
-    []
+    [canDrag, date, dragItem, dragType, post.id, post.intervalInDays]
   );
   return (
     <div
@@ -1349,21 +1366,48 @@ const CalendarItem: FC<{
               </span>
             </div>
             {!compact && firstMedia?.path && (
-              <div className="h-[82px] w-full overflow-hidden rounded-[7px] border border-newTextColor/5 bg-newSettings">
-                <VideoOrImage
-                  src={mediaDirectory.set(firstMedia.path)}
-                  autoplay={false}
-                  imageClassName="object-cover"
-                  videoClassName="object-cover"
-                />
+              <div className="relative h-[82px] w-full overflow-hidden rounded-[7px] border border-newTextColor/5 bg-newSettings">
+                {firstMediaIsVideo ? (
+                  firstMedia.thumbnail ? (
+                    <img
+                      src={mediaDirectory.set(firstMedia.thumbnail)}
+                      alt=""
+                      className="h-full w-full object-cover"
+                    />
+                  ) : (
+                    <VideoFrame url={mediaDirectory.set(firstMedia.path)} />
+                  )
+                ) : (
+                  <VideoOrImage
+                    src={mediaDirectory.set(firstMedia.path)}
+                    autoplay={false}
+                    imageClassName="object-cover"
+                    videoClassName="object-cover"
+                  />
+                )}
+                {firstMediaIsVideo && (
+                  <div
+                    className="pointer-events-none absolute inset-0 flex items-center justify-center"
+                    aria-label={t('video', 'Video')}
+                  >
+                    <span className="flex h-[30px] w-[30px] items-center justify-center rounded-full border border-white/35 bg-black/55 text-white shadow-sm backdrop-blur-[2px]">
+                      <svg
+                        viewBox="0 0 24 24"
+                        aria-hidden="true"
+                        className="h-[14px] w-[14px] fill-current"
+                      >
+                        <path d="M8 5.6v12.8c0 .8.9 1.3 1.6.8l9.1-6.4c.6-.4.6-1.2 0-1.6L9.6 4.8C8.9 4.3 8 4.8 8 5.6Z" />
+                      </svg>
+                    </span>
+                  </div>
+                )}
               </div>
             )}
             <div
               ref={contentRef}
               className={clsx(
                 'w-full break-words text-start leading-[1.45]',
-                !contentExpanded &&
-                  (compact ? 'line-clamp-2' : 'line-clamp-4')
+                !contentExpanded && (compact ? 'line-clamp-2' : 'line-clamp-4')
               )}
             >
               {content}

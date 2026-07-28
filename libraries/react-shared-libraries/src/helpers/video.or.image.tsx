@@ -4,16 +4,30 @@ import { hasExtension } from '@gitroom/helpers/utils/has.extension';
 export const VideoOrImage: FC<{
   src: string;
   autoplay: boolean;
+  controls?: boolean;
+  poster?: string;
   isContain?: boolean;
   imageClassName?: string;
   videoClassName?: string;
 }> = (props) => {
-  const { src, autoplay, isContain, imageClassName, videoClassName } = props;
+  const {
+    src,
+    autoplay,
+    controls,
+    poster,
+    isContain,
+    imageClassName,
+    videoClassName,
+  } = props;
   if (hasExtension(src, 'mp4')) {
     return (
       <video
         src={src}
         autoPlay={autoplay}
+        controls={controls ?? autoplay}
+        poster={poster}
+        playsInline={true}
+        preload="metadata"
         className={clsx('w-full h-full', videoClassName)}
         muted={true}
         loop={true}

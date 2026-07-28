@@ -401,6 +401,55 @@ export class PostizCloudService {
     });
   }
 
+  async schedulePostGroup(organizationId: string, group: string, date: string) {
+    const posts = (await this.getAllPosts(organizationId)).filter(
+      (post) => post.group === group && post.state === 'DRAFT'
+    );
+    if (!posts.length) {
+      throw new HttpException('Postiz Cloud draft was not found.', 404);
+    }
+    const rootPosts = Array.from(
+      new Map(posts.map((post) => [post.integration.id, post])).values()
+    );
+
+    const postsWithValues = await Promise.all(
+      rootPosts.map(async (post) => {
+        const shadow = await this.readShadow(organizationId, post.id);
+        return {
+          integration: { id: post.integration.id },
+          settings: shadow?.settings ||
+            post.settings || {
+              __type: post.integration.providerIdentifier,
+            },
+          value: shadow?.value?.length
+            ? shadow.value
+            : [
+                {
+                  content: post.content,
+                  image: post.image || [],
+                  delay: 0,
+                },
+              ],
+        };
+      })
+    );
+
+    const created = await this.createPosts(organizationId, {
+      type: 'schedule',
+      date,
+      shortLink: false,
+      tags:
+        rootPosts[0].tags?.map((tagWrapper: any) => ({
+          value: tagWrapper?.tag?.id,
+          label: tagWrapper?.tag?.name,
+        })) || [],
+      posts: postsWithValues,
+    });
+
+    await this.deletePostGroup(organizationId, group);
+    return created;
+  }
+
   async findSlot(integrationId: string) {
     return this.request<{ date: string }>(
       `/find-slot/${encodeURIComponent(integrationId)}`

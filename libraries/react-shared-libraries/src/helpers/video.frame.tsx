@@ -12,6 +12,8 @@ export const VideoFrame: FC<{
       src={url + '#t=0.1'}
       preload="metadata"
       autoPlay={!!props?.autoplay}
+      muted={true}
+      playsInline={true}
     />
   );
 };

@@ -490,6 +490,44 @@ export class PostsRepository {
     });
   }
 
+  async schedulePostGroup(orgId: string, group: string, date: string) {
+    const posts = await this.getPostsByGroup(orgId, group);
+    const rootPosts = posts.filter((post) => !post.parentPostId);
+    if (!rootPosts.length) {
+      return [];
+    }
+
+    const originalStart = rootPosts.reduce(
+      (earliest, post) =>
+        post.publishDate.getTime() < earliest.getTime()
+          ? post.publishDate
+          : earliest,
+      rootPosts[0].publishDate
+    );
+    const scheduledStart = dayjs.utc(date);
+
+    await Promise.all(
+      posts.map((post) =>
+        this._post.model.post.update({
+          where: {
+            organizationId: orgId,
+            id: post.id,
+          },
+          data: {
+            state: State.QUEUE,
+            publishDate: scheduledStart
+              .add(post.publishDate.getTime() - originalStart.getTime(), 'ms')
+              .toDate(),
+            releaseId: null,
+            releaseURL: null,
+          },
+        })
+      )
+    );
+
+    return rootPosts;
+  }
+
   countPostsFromDay(orgId: string, date: Date) {
     return this._post.model.post.count({
       where: {

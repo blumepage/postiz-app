@@ -1000,6 +1000,30 @@ export class PostsService {
     return newDate;
   }
 
+  async schedulePostGroup(orgId: string, group: string, date: string) {
+    const rootPosts = await this._postRepository.schedulePostGroup(
+      orgId,
+      group,
+      date
+    );
+    if (!rootPosts.length) {
+      throw new BadRequestException('Draft idea not found');
+    }
+
+    await Promise.all(
+      rootPosts.map((post) =>
+        this.startWorkflow(
+          post.integration.providerIdentifier.split('-')[0].toLowerCase(),
+          post.id,
+          orgId,
+          State.QUEUE
+        )
+      )
+    );
+
+    return { group, date, state: State.QUEUE };
+  }
+
   async generatePostsDraft(orgId: string, body: CreateGeneratedPostsDto) {
     const getAllIntegrations = (
       await this._integrationService.getIntegrationsList(orgId)
