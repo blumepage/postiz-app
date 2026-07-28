@@ -651,8 +651,6 @@ export const ListView = () => {
   const emptyMessage =
     listState === 'scheduled'
       ? t('no_upcoming_posts', 'No upcoming posts scheduled')
-      : listState === 'draft'
-      ? t('no_draft_posts', 'No draft posts')
       : listState === 'published'
       ? t('no_published_posts', 'No published posts')
       : t('no_posts', 'No posts');

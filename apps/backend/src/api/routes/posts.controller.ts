@@ -161,10 +161,11 @@ export class PostsController {
       posts: [
         ...localPosts.filter(
           (post) =>
-            !this._postizCloudService.enabled ||
-            post.integration.providerIdentifier === 'sanity'
+            post.state !== 'DRAFT' &&
+            (!this._postizCloudService.enabled ||
+              post.integration.providerIdentifier === 'sanity')
         ),
-        ...cloudPosts,
+        ...cloudPosts.filter((post) => post.state !== 'DRAFT'),
       ],
     });
   }
@@ -225,6 +226,7 @@ export class PostsController {
       ),
       ...cloudPosts,
     ]
+      .filter((post) => query.state === 'draft' || post.state !== 'DRAFT')
       .filter(
         (post) =>
           !query.state ||

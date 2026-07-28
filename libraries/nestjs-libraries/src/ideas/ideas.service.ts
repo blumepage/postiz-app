@@ -57,7 +57,7 @@ export class IdeasService {
       {
         group: string;
         stage: IdeaStage | 'SCHEDULED';
-        publishDate: string | Date;
+        publishDate: string | Date | null;
         posts: any[];
       }
     >();
@@ -88,8 +88,10 @@ export class IdeasService {
           tags: post.tags || [],
         });
         if (
+          stage === 'SCHEDULED' &&
+          existing.publishDate &&
           new Date(post.publishDate).getTime() <
-          new Date(existing.publishDate).getTime()
+            new Date(existing.publishDate).getTime()
         ) {
           existing.publishDate = post.publishDate;
         }
@@ -99,7 +101,7 @@ export class IdeasService {
       grouped.set(post.group, {
         group: post.group,
         stage,
-        publishDate: post.publishDate,
+        publishDate: stage === 'SCHEDULED' ? post.publishDate : null,
         posts: [
           {
             ...post,
@@ -117,10 +119,13 @@ export class IdeasService {
         if (right.stage === 'SCHEDULED' && left.stage !== 'SCHEDULED') {
           return -1;
         }
-        return (
-          new Date(left.publishDate).getTime() -
-          new Date(right.publishDate).getTime()
-        );
+        if (left.stage === 'SCHEDULED' && right.stage === 'SCHEDULED') {
+          return (
+            new Date(left.publishDate!).getTime() -
+            new Date(right.publishDate!).getTime()
+          );
+        }
+        return left.group.localeCompare(right.group);
       }),
     };
   }

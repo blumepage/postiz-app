@@ -22,7 +22,7 @@ type IdeaStage = 'INBOX' | 'PICKED' | 'POLISHED' | 'SCHEDULED';
 type Idea = {
   group: string;
   stage: IdeaStage;
-  publishDate: string;
+  publishDate: string | null;
   posts: any[];
 };
 
@@ -89,7 +89,11 @@ const IdeaCard: FC<{
     >
       <CalendarItem
         isBeforeNow={false}
-        date={newDayjs(post.publishDate)}
+        date={
+          idea.stage === 'SCHEDULED' && idea.publishDate
+            ? newDayjs(idea.publishDate)
+            : newDayjs()
+        }
         state={post.state}
         statistics={openStatistics(post.id)}
         missingRelease={openMissingRelease(post.id)}

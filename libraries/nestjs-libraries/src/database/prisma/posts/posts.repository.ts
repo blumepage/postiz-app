@@ -239,7 +239,7 @@ export class PostsRepository {
         ? { state: State.PUBLISHED }
         : {
             state: {
-              in: [State.QUEUE, State.DRAFT, State.PUBLISHED, State.ERROR],
+              in: [State.QUEUE, State.PUBLISHED, State.ERROR],
             },
           };
 

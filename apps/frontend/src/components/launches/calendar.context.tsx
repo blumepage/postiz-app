@@ -29,7 +29,7 @@ import {
 extend(isoWeek);
 extend(weekOfYear);
 
-export type ListStateFilter = 'all' | 'scheduled' | 'draft' | 'published';
+export type ListStateFilter = 'all' | 'scheduled' | 'published';
 
 export const CalendarContext = createContext({
   startDate: newDayjs().startOf('isoWeek').format('YYYY-MM-DD'),
