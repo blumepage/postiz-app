@@ -42,6 +42,7 @@ import { PreConditionComponent } from '@gitroom/frontend/components/layout/pre-c
 import { AttachToFeedbackIcon } from '@gitroom/frontend/components/new-layout/sentry.feedback.component';
 import { FirstBillingComponent } from '@gitroom/frontend/components/billing/first.billing.component';
 import { TrialTracker } from '@gitroom/frontend/components/layout/gtm.component';
+import { LoadingComponent } from '@gitroom/frontend/components/layout/loading';
 
 const jakartaSans = Plus_Jakarta_Sans({
   weight: ['600', '500', '700'],
@@ -56,10 +57,22 @@ export const LayoutComponent = ({ children }: { children: ReactNode }) => {
 
   // Feedback icon component attaches Sentry feedback to a top-bar icon when DSN is present
   const searchParams = useSearchParams();
-  const load = useCallback(async (path: string) => {
-    return await (await fetch(path)).json();
-  }, []);
-  const { data: user, mutate } = useSWR('/user/self', load, {
+  const load = useCallback(
+    async (path: string) => {
+      const response = await fetch(path);
+      if (!response.ok) {
+        throw new Error('Unable to load your account');
+      }
+      return response.json();
+    },
+    [fetch]
+  );
+  const {
+    data: user,
+    mutate,
+    isLoading,
+    error,
+  } = useSWR('/user/self', load, {
     revalidateOnFocus: false,
     revalidateOnReconnect: false,
     revalidateIfStale: false,
@@ -67,7 +80,36 @@ export const LayoutComponent = ({ children }: { children: ReactNode }) => {
     refreshWhenHidden: false,
   });
 
-  if (!user) return null;
+  if (isLoading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-newBgColor text-newTextColor">
+        <LoadingComponent />
+      </div>
+    );
+  }
+
+  if (error || !user) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-newBgColor p-[24px] text-newTextColor">
+        <div className="flex max-w-[520px] flex-col items-center gap-[14px] rounded-[14px] border border-newTableBorder bg-newTableHeader p-[32px] text-center">
+          <div className="text-[22px] font-semibold">
+            We could not load your workspace
+          </div>
+          <div className="text-[14px] leading-[22px] text-textItemBlur">
+            The server may be temporarily unavailable. Try again to reconnect
+            without leaving the app.
+          </div>
+          <button
+            type="button"
+            onClick={() => mutate()}
+            className="rounded-[8px] bg-primary px-[16px] py-[9px] text-[14px] font-medium text-white"
+          >
+            Try again
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <ContextWrapper user={user}>

@@ -1,7 +1,7 @@
 'use client';
 
 import useSWR from 'swr';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { capitalize, orderBy } from 'lodash';
 import clsx from 'clsx';
 import ImageWithFallback from '@gitroom/react/helpers/image.with.fallback';
@@ -71,6 +71,11 @@ export const Plugs = () => {
   const currentIntegration = useMemo(() => {
     return sortedIntegrations[current];
   }, [current, sortedIntegrations]);
+  useEffect(() => {
+    if (current >= sortedIntegrations.length) {
+      setCurrent(0);
+    }
+  }, [current, sortedIntegrations.length]);
   const currentIntegrationPlug = useMemo(() => {
     const plug = plugList?.plugs?.find(
       (f: any) => f?.identifier === currentIntegration?.identifier
@@ -171,7 +176,7 @@ export const Plugs = () => {
               }}
               className={clsx(
                 'flex gap-[8px] items-center justify-center group/profile hover:bg-boxHover rounded-e-[8px]',
-                currentIntegration.id !== integration.id &&
+                currentIntegration?.id !== integration.id &&
                   'opacity-20 hover:opacity-100 cursor-pointer'
               )}
             >

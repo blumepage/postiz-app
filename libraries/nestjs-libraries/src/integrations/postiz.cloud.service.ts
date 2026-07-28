@@ -456,6 +456,20 @@ export class PostizCloudService {
     );
   }
 
+  async getAnalytics(integrationId: string, date: string) {
+    const params = new URLSearchParams({ date });
+    return this.request<any[]>(
+      `/analytics/${encodeURIComponent(integrationId)}?${params.toString()}`
+    );
+  }
+
+  async getPostAnalytics(postId: string, date: number) {
+    const params = new URLSearchParams({ date: String(date) });
+    return this.request<any[] | { missing: true }>(
+      `/analytics/post/${encodeURIComponent(postId)}?${params.toString()}`
+    );
+  }
+
   async deleteIntegration(id: string) {
     return this.request(`/integrations/${encodeURIComponent(id)}`, {
       method: 'DELETE',

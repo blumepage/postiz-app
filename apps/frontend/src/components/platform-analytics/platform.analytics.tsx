@@ -1,7 +1,7 @@
 'use client';
 
 import useSWR from 'swr';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { capitalize, orderBy } from 'lodash';
 import clsx from 'clsx';
 import ImageWithFallback from '@gitroom/react/helpers/image.with.fallback';
@@ -41,24 +41,34 @@ export const PlatformAnalytics = () => {
   const [collapseMenu, setCollapseMenu] = useCookie('collapseMenu', '0');
   const toaster = useToaster();
   const load = useCallback(async () => {
-    const int = (
-      await (await fetch('/integrations/list')).json()
-    ).integrations.filter((f: any) => {
+    const response = await fetch('/integrations/list');
+    if (!response.ok) {
+      throw new Error('Unable to load channels');
+    }
+    const payload = await response.json();
+    const integrations = Array.isArray(payload?.integrations)
+      ? payload.integrations
+      : [];
+    const int = integrations.filter((f: any) => {
       if (f.identifier === 'x' && disableXAnalytics) {
         return false;
       }
       return true;
     });
     return int.filter((f: any) => allowedIntegrations.includes(f.identifier));
-  }, []);
-  const { data, isLoading } = useSWR('analytics-list', load, {
+  }, [fetch, disableXAnalytics]);
+  const {
+    data = [],
+    isLoading,
+    error,
+    mutate,
+  } = useSWR('analytics-list', load, {
     revalidateOnFocus: false,
     revalidateOnReconnect: false,
     revalidateIfStale: false,
     revalidateOnMount: true,
     refreshWhenHidden: false,
     refreshWhenOffline: false,
-    fallbackData: [],
   });
   const sortedIntegrations = useMemo(() => {
     return orderBy(
@@ -70,6 +80,11 @@ export const PlatformAnalytics = () => {
   const currentIntegration = useMemo(() => {
     return sortedIntegrations[current];
   }, [current, sortedIntegrations]);
+  useEffect(() => {
+    if (current >= sortedIntegrations.length) {
+      setCurrent(0);
+    }
+  }, [current, sortedIntegrations.length]);
   const options = useMemo(() => {
     if (!currentIntegration) {
       return [];
@@ -139,6 +154,23 @@ export const PlatformAnalytics = () => {
     return (
       <div className="bg-newBgColorInner p-[20px] flex flex-1 flex-col gap-[15px] transition-all items-center justify-center">
         <LoadingComponent />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="bg-newBgColorInner p-[20px] flex flex-1 flex-col gap-[14px] items-center justify-center text-center">
+        <div className="text-[20px] font-medium">
+          {t('analytics_could_not_be_loaded', 'Analytics could not be loaded')}
+        </div>
+        <div className="max-w-[480px] text-[14px] text-textItemBlur">
+          {t(
+            'analytics_load_failed_description',
+            'The channel connection may be temporarily unavailable. Try again in a moment.'
+          )}
+        </div>
+        <Button onClick={() => mutate()}>{t('try_again', 'Try again')}</Button>
       </div>
     );
   }
@@ -223,7 +255,7 @@ export const PlatformAnalytics = () => {
               }}
               className={clsx(
                 'flex gap-[12px] items-center group/profile justify-center hover:bg-boxHover rounded-e-[8px]',
-                currentIntegration.id !== integration.id &&
+                currentIntegration?.id !== integration.id &&
                   'opacity-20 hover:opacity-100 cursor-pointer'
               )}
             >
@@ -273,7 +305,7 @@ export const PlatformAnalytics = () => {
         </div>
       </div>
       <div className="bg-newBgColorInner flex-1 flex-col flex p-[20px] gap-[12px]">
-        {!!options.length && (
+        {!!options.length ? (
           <div className="flex-1 flex flex-col gap-[14px]">
             <div className="max-w-[200px]">
               <Select
@@ -295,6 +327,13 @@ export const PlatformAnalytics = () => {
                 <RenderAnalytics integration={currentIntegration} date={keys} />
               )}
             </div>
+          </div>
+        ) : (
+          <div className="flex flex-1 items-center justify-center text-center text-textItemBlur">
+            {t(
+              'analytics_not_supported_for_channel',
+              'Analytics are not available for this channel.'
+            )}
           </div>
         )}
       </div>

@@ -1,4 +1,4 @@
-import { FC, useCallback, useMemo, useState } from 'react';
+import { FC, useCallback, useMemo } from 'react';
 import { Integration } from '@prisma/client';
 import useSWR from 'swr';
 import { useFetch } from '@gitroom/helpers/utils/custom.fetch';
@@ -35,10 +35,7 @@ const TrendIndicator: FC<{ value: number; average?: boolean }> = ({
         fill="none"
         className={isPositive ? '' : 'rotate-180'}
       >
-        <path
-          d="M6 2.5L10 7.5H2L6 2.5Z"
-          fill="currentColor"
-        />
+        <path d="M6 2.5L10 7.5H2L6 2.5Z" fill="currentColor" />
       </svg>
       <span>
         {displayValue}
@@ -87,7 +84,10 @@ const AnalyticsCard: FC<{
             </span>
           </div>
           {item.percentageChange !== undefined && (
-            <TrendIndicator value={item.percentageChange} average={item.average} />
+            <TrendIndicator
+              value={item.percentageChange}
+              average={item.average}
+            />
           )}
         </div>
 
@@ -97,7 +97,11 @@ const AnalyticsCard: FC<{
             {/* Chart */}
             <div className="flex-1 px-[12px] py-[8px]">
               <div className="h-[120px] relative">
-                <ChartSocial data={item.data} color={color} key={`chart-${index}`} />
+                <ChartSocial
+                  data={item.data}
+                  color={color}
+                  key={`chart-${index}`}
+                />
               </div>
             </div>
 
@@ -172,19 +176,23 @@ export const RenderAnalytics: FC<{
   date: number;
 }> = (props) => {
   const { integration, date } = props;
-  const [loading, setLoading] = useState(true);
   const fetch = useFetch();
 
   const load = useCallback(async () => {
-    setLoading(true);
-    const load = (
-      await fetch(`/analytics/${integration.id}?date=${date}`)
-    ).json();
-    setLoading(false);
-    return load;
-  }, [integration, date]);
+    const response = await fetch(`/analytics/${integration.id}?date=${date}`);
+    if (!response.ok) {
+      throw new Error('Unable to load analytics');
+    }
+    const payload = await response.json();
+    return Array.isArray(payload) ? payload : [];
+  }, [fetch, integration.id, date]);
 
-  const { data } = useSWR(`/analytics-${integration?.id}-${date}`, load, {
+  const {
+    data = [],
+    isLoading,
+    error,
+    mutate,
+  } = useSWR(`/analytics-${integration?.id}-${date}`, load, {
     refreshInterval: 0,
     refreshWhenHidden: false,
     revalidateOnFocus: false,
@@ -217,10 +225,14 @@ export const RenderAnalytics: FC<{
   const t = useT();
 
   const totals = useMemo(() => {
-    return data?.map((p: AnalyticsDataItem) => {
+    return data.map((p: AnalyticsDataItem) => {
+      const points = Array.isArray(p?.data) ? p.data : [];
       const value =
-        (p?.data.reduce((acc: number, curr: { total: number }) => acc + curr.total, 0) || 0) /
-        (p.average ? p.data.length : 1);
+        (points.reduce(
+          (acc: number, curr: { total: number }) =>
+            acc + Number(curr?.total || 0),
+          0
+        ) || 0) / (p.average && points.length ? points.length : 1);
       if (p.average) {
         return value.toFixed(2) + '%';
       }
@@ -228,7 +240,7 @@ export const RenderAnalytics: FC<{
     });
   }, [data]);
 
-  if (loading) {
+  if (isLoading) {
     return (
       <div className="flex items-center justify-center py-[48px]">
         <LoadingComponent />
@@ -236,16 +248,39 @@ export const RenderAnalytics: FC<{
     );
   }
 
+  if (error) {
+    return (
+      <div className="flex min-h-[240px] flex-col items-center justify-center gap-[12px] rounded-[12px] border border-newTableBorder bg-newTableHeader p-[24px] text-center">
+        <div className="text-[16px] font-medium">
+          {t('analytics_could_not_be_loaded', 'Analytics could not be loaded')}
+        </div>
+        <div className="max-w-[420px] text-[14px] text-textItemBlur">
+          {t(
+            'analytics_load_failed_description',
+            'The channel connection may be temporarily unavailable. Try again in a moment.'
+          )}
+        </div>
+        <button
+          type="button"
+          onClick={() => mutate()}
+          className="rounded-[8px] bg-primary px-[16px] py-[8px] text-[14px] font-medium text-white"
+        >
+          {t('try_again', 'Try again')}
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-[16px]">
-      {data?.length === 0 && (
+      {data.length === 0 && (
         <EmptyState onRefresh={refreshChannel(integration as any)} />
       )}
-      {data?.map((item: AnalyticsDataItem, index: number) => (
+      {data.map((item: AnalyticsDataItem, index: number) => (
         <AnalyticsCard
           key={`analytics-${index}`}
           item={item}
-          total={totals[index]}
+          total={totals[index] || 0}
           index={index}
         />
       ))}
