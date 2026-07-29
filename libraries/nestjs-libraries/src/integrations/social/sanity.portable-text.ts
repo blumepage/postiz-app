@@ -116,10 +116,20 @@ export function htmlToPortableText(html: string): PortableTextBlock[] {
     const compactChildren = children.filter((child) => child.text.length > 0);
     if (compactChildren.length === 0) return;
 
+    let style = options.style || 'normal';
+    if (style === 'normal' && compactChildren.length === 1) {
+      const markdownHeading =
+        compactChildren[0].text.match(/^(#{1,4})\s+(.+)$/);
+      if (markdownHeading) {
+        style = markdownHeading[1].length <= 2 ? 'h2' : 'h3';
+        compactChildren[0].text = markdownHeading[2];
+      }
+    }
+
     blocks.push({
       _type: 'block',
       _key: nextKey('b'),
-      style: options.style || 'normal',
+      style,
       children: compactChildren,
       markDefs,
       ...(options.listItem ? { listItem: options.listItem } : {}),
