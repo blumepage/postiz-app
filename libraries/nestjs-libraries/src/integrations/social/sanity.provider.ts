@@ -9,6 +9,7 @@ import { SanityDto } from '@gitroom/nestjs-libraries/dtos/posts/providers-settin
 import { Integration } from '@prisma/client';
 import { makeId } from '@gitroom/nestjs-libraries/services/make.is';
 import { htmlToPortableText } from '@gitroom/nestjs-libraries/integrations/social/sanity.portable-text';
+import { sanityDocumentId } from '@gitroom/nestjs-libraries/integrations/social/sanity.document';
 import dayjs from 'dayjs';
 import slugify from 'slugify';
 
@@ -201,7 +202,7 @@ export class SanityProvider extends SocialAbstract implements SocialProvider {
   }
 
   async post(
-    id: string,
+    _id: string,
     accessToken: string,
     postDetails: PostDetails<SanityDto>[],
     integration: Integration
@@ -211,8 +212,8 @@ export class SanityProvider extends SocialAbstract implements SocialProvider {
     const title = details.settings.title.trim();
     const slug = slugify(title, { lower: true, strict: true, trim: true });
     const published = (details.settings.status || 'publish') === 'publish';
-    const stableId = `postiz.${id.replace(/[^a-zA-Z0-9._-]/g, '-')}`;
-    const documentId = published ? stableId : `drafts.${stableId}`;
+    const documentId = sanityDocumentId(details.id, published);
+    const stableId = documentId.replace(/^drafts\./, '');
     const now = new Date().toISOString();
 
     let imageAssetId: string | undefined;
